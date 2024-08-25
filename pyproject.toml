@@ -9,3 +9,30 @@ dependencies = []
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "ruff>=0.6.1",
+]
+
+[tool.ruff]
+line-length = 88
+fix = true
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "ASYNC",
+    "N",
+    "UP",
+    "YTT",
+    "DTZ",
+    "A",
+    "B",
+    "I"
+]
+
+[tool.ruff.lint.isort]
+force-single-line = true
