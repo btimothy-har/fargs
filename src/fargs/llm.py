@@ -34,6 +34,5 @@ def get_chat_client(model: str):
     return ChatOpenAI(
         model=model,
         temperature=0,
-        timeout=30,
         api_key=os.getenv("OPENAI_API_KEY"),
     )

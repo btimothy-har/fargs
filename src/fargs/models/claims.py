@@ -92,3 +92,9 @@ class Claim(BaseModel):
         if value not in [t.value for t in ClaimType]:
             return ClaimType.OTHER.value
         return value
+
+    def model_dump(self, *args, **kwargs):
+        data = super().model_dump(*args, **kwargs)
+        data["claim_type"] = data["claim_type"].value
+        data["claim_status"] = data["claim_status"].value
+        return data

@@ -4,6 +4,11 @@ from .claims import ClaimType
 from .entities import DefaultEntityTypes
 from .entities import Entity
 from .entities import ResolvedEntity
+from .outputs import ClaimOutput
+from .outputs import EntityOutput
+from .outputs import ExtractRelationshipsOutput
+from .outputs import NamedResolvedEntityOutput
+from .outputs import ResolvedEntityOutput
 from .relationships import Relationship
 from .sources import Document
 from .sources import TextUnit
@@ -18,5 +23,10 @@ __all__ = [
     "ResolvedEntity",
     "DefaultEntityTypes",
     "Relationship",
-    "construct_entity_class",
+    "EntityOutput",
+    "NamedResolvedEntityOutput",
+    "ExtractRelationshipsOutput",
+    "ResolvedEntityOutput",
+    "RelationshipOutput",
+    "ClaimOutput",
 ]

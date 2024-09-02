@@ -3,9 +3,17 @@ from pydantic import Field
 from pydantic import field_validator
 
 
-class Relationship(BaseModel):
+class BasicRelationship(BaseModel):
     source_entity: str = Field(title="Source", description="The source entity.")
     target_entity: str = Field(title="Target", description="The target entity.")
+
+    @field_validator("source_entity", "target_entity", mode="before")
+    @classmethod
+    def capitalize_entity(cls, value):
+        return value.upper()
+
+
+class Relationship(BasicRelationship):
     relationship_description: str = Field(
         title="Description",
         description=(
@@ -20,8 +28,3 @@ class Relationship(BaseModel):
             "strength of the relationship."
         ),
     )
-
-    @field_validator("source_entity", "target_entity", mode="before")
-    @classmethod
-    def capitalize_entity(cls, value):
-        return value.upper()

@@ -19,7 +19,7 @@ STEP 2
 ----------
 Identify all entities. For each identified entity, extract the following information:
 - entity_name: Name of the entity, capitalized. If the entity is a date, ensure to include the year in the format MMM YYYY. If the year is not known, use the current year.
-- entity_type: One of the following types: {entity_types}
+- entity_type: The type of the entity.
 - entity_description: Comprehensive description of the entity's attributes and activities
 
 STEP 3

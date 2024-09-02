@@ -1,39 +1,23 @@
 import asyncio
+from collections import defaultdict
 from collections.abc import Callable
-from datetime import UTC
-from datetime import datetime
 from enum import Enum
 from typing import Any
 
-import faiss
-import numpy as np
 import pandas as pd
 from aiolimiter import AsyncLimiter
-from langchain_experimental.text_splitter import SemanticChunker
-from pydantic import BaseModel
-from pydantic import Field
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from langchain_text_splitters import CharacterTextSplitter
 from tiktoken import encoding_for_model
 
 from fargs.llm import OpenAIChatModels
 from fargs.llm import OpenAIEmbeddingModels
 from fargs.llm import get_chat_client
 from fargs.llm import get_embeddings
-from fargs.models import Claim
-from fargs.models import ClaimType
 from fargs.models import DefaultEntityTypes
 from fargs.models import Document
-from fargs.models import Entity
-from fargs.models import Relationship
-from fargs.models import ResolvedEntity
-from fargs.models import TextUnit
+from fargs.pipeline import tasks
 
-from .prompts import CLAIM_EXTRACTION
-from .prompts import EXTRACT_ENTITIES_PROMPT
-from .prompts import NAMED_ENTITY_RESOLUTION
-from .prompts import RELATIONSHIP_EXTRACTION
-from .prompts import SIMILAR_ENTITY_RESOLUTION
+from .progress import ProgressReporter
 
 
 class GraphPipeline:
@@ -52,68 +36,100 @@ class GraphPipeline:
         self.llm = get_chat_client(chat_model)
         self.embedding = get_embeddings(embedding_model)
         self.encoder = encoding_for_model(chat_model)
-        self.limiter = AsyncLimiter(token_limit)
-        self.chunker = SemanticChunker(
-            embeddings=self.embedding,
-            breakpoint_threshold_type="standard_deviation",
-            breakpoint_threshold_amount=0.5,
+        self.chunker = CharacterTextSplitter.from_tiktoken_encoder(
+            encoding_name=self.encoder.name,
+            chunk_size=256,
+            chunk_overlap=25,
         )
         self.entity_types = entity_types
 
-        self.df_documents = df_documents
-        self.df_text_units = df_text_units
-        self.df_entities = df_entities
-        self.df_relationships = df_relationships
-        self.df_claims = df_claims
-
-    async def ingest_document(self, document_dict: dict):
-        document = Document(
-            doc_id=str(document_dict["id"]),
-            **document_dict,
+        self.df_documents = df_documents if df_documents is not None else pd.DataFrame()
+        self.df_text_units = (
+            df_text_units if df_text_units is not None else pd.DataFrame()
         )
+        self.df_entities = df_entities if df_entities is not None else pd.DataFrame()
+        self.df_relationships = (
+            df_relationships if df_relationships is not None else pd.DataFrame()
+        )
+        self.df_claims = df_claims if df_claims is not None else pd.DataFrame()
 
-        text_units = await _build_text_units(self, document)
-        entities = await _extract_entities(self, text_units)
-        entities = await _resolve_entities_by_name(self, entities)
-        entities = await _resolve_document_entities(self, entities)
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
 
-        if self.df_entities is not None:
-            self.df_entities["name_embedded"] = await asyncio.gather(
-                *[self._embed_text(name) for name in self.df_entities["entity_name"]]
-            )
-            self.df_entities["description_embedded"] = await asyncio.gather(
-                *[
-                    self._embed_text(desc)
-                    for desc in self.df_entities["entity_description"]
-                ]
-            )
-            self.df_entities = await _resolve_global_entities(self, entities)
+        self._df_lock = defaultdict(asyncio.Lock)
+        self._limiter = AsyncLimiter(token_limit)
+        self._semaphore = asyncio.Semaphore(4)
 
-        relationships = await _extract_relationships(self, text_units, entities)
-        claims = await _extract_claims(self, text_units, entities)
+    def ingest_document(self, document_dict: dict):
+        self._loop.run_until_complete(self._ingest_document(document_dict))
 
-        dataframes = {
-            "text_units": text_units,
-            "entities": self.df_entities,
-            "relationships": relationships,
-            "claims": claims,
-        }
+    def batch_documents(self, documents: list[dict]):
+        self._loop.run_until_complete(self._batch_documents(documents))
 
-        for name, df in dataframes.items():
-            if df is not None and not df.empty:
-                filename = f"{name}.csv"
-                df.to_csv(filename, index=False)
-                print(f"Saved {filename}")
+    async def _batch_documents(self, documents: list[dict]):
+        tasks = []
+
+        for i, document in enumerate(documents):
+            task = asyncio.create_task(self._ingest_document(document, i))
+            tasks.append(task)
+
+        for task in asyncio.as_completed(tasks):
+            await task
+
+    async def _ingest_document(self, document_dict: dict, iter_num: int = 0):
+        document = Document(**document_dict)
+
+        progress = ProgressReporter(document.title)
+        progress.start(iter_num)
+
+        async with self._df_lock["documents"]:
+            if not self.df_documents.empty:
+                if document.content_hash in self.df_documents["content_hash"].values:
+                    return
+
+            self.df_documents = pd.concat(
+                [self.df_documents, pd.DataFrame([document.model_dump()])],
+                ignore_index=True,
+            ).drop_duplicates(subset=["doc_id"], keep="last")
+
+        text_units = await tasks.build_text_units(self, progress, document)
+        entities = await tasks.extract_entities(self, progress, text_units)
+        entities = await tasks.resolve_entities_by_name(self, progress, entities)
+        entities = await tasks.resolve_document_entities(self, progress, entities)
+
+        async with self._df_lock["entities"]:
+            if self.df_entities.empty:
+                self.df_entities = pd.concat(
+                    [self.df_entities, entities], ignore_index=True
+                )
             else:
-                print(f"Skipped {name}.csv (DataFrame is None or empty)")
+                self.df_entities = await tasks.resolve_global_entities(
+                    self, progress, entities
+                )
 
-        if entities is not None and not entities.empty:
-            filename = "entities"
-            entities.to_parquet(f"{filename}.parquet", index=False)
-            entities.to_csv(f"{filename}.csv", index=False)
-            print(f"Saved {filename}")
-        else:
-            print("Skipped entities.parquet (DataFrame is None or empty)")
+        relationships = await tasks.extract_relationships(
+            self, progress, text_units, entities
+        )
+        claims = await tasks.extract_claims(self, progress, text_units, entities)
+
+        async with self._df_lock["text_units"]:
+            if self.df_text_units.empty:
+                self.df_text_units = text_units
+            else:
+                self.df_text_units = self.df_text_units[
+                    self.df_text_units["doc_id"] != document.doc_id
+                ]
+                self.df_text_units = pd.concat(
+                    [self.df_text_units, text_units], ignore_index=True
+                )
+
+        async with self._df_lock["relationships"]:
+            self.df_relationships = pd.concat(
+                [self.df_relationships, relationships], ignore_index=True
+            )
+
+        async with self._df_lock["claims"]:
+            self.df_claims = pd.concat([self.df_claims, claims], ignore_index=True)
 
     def _encode(self, text: str) -> list[int]:
         return self.encoder.encode(text)
@@ -124,337 +140,16 @@ class GraphPipeline:
     async def _embed_text(self, text: str) -> list[float]:
         input_tokens = self._encode(text)
 
-        await self.limiter.acquire(len(input_tokens))
-        embeddings = await self.embedding.aembed_query(text)
+        async with self._semaphore:
+            await self._limiter.acquire(len(input_tokens))
+            embeddings = await self.embedding.aembed_query(text)
+
         return embeddings
 
     async def _invoke_llm(self, task: Callable, messages: list[Any]):
         input_tokens = len(self._encode(str(messages)))
 
-        await self.limiter.acquire(input_tokens)
-        response = await task(messages)
+        async with self._semaphore:
+            await self._limiter.acquire(input_tokens)
+            response = await task(messages)
         return response
-
-
-# # async def _process_document(pipeline:GraphPipeline, document_dict: dict):
-#     document = Document(**document_dict)
-#     doc_df = pd.DataFrame([document.dataframe_dict()])
-
-#     if pipeline.df_documents is None:
-#         pipeline.df_documents = doc_df
-#     else:
-#         self.df_documents = pd.concat(
-#             [self.df_documents, doc_df],
-#             ignore_index=True,
-#         )
-
-#     self.df_documents = self.df_documents.drop_duplicates(
-#         subset=["doc_id"], keep="last"
-#     )
-
-
-async def _build_text_units(pipeline: GraphPipeline, document: Document):
-    raw_split_text = pipeline._split_text(document.text)
-    embedded_text = await asyncio.gather(
-        *(pipeline._embed_text(text) for text in raw_split_text)
-    )
-    text_units = [
-        TextUnit(
-            doc_id=document.doc_id,
-            unit_num=i,
-            text=text,
-            embedding=embedding,
-        )
-        for i, (text, embedding) in enumerate(
-            zip(raw_split_text, embedded_text, strict=True)
-        )
-    ]
-
-    return pd.DataFrame([unit.model_dump() for unit in text_units])
-
-    # if self.df_text_units is None:
-    #     self.df_text_units = units_df
-    # else:
-    #     self.df_text_units = self.df_text_units[
-    #         self.df_text_units["doc_id"] != document.doc_id
-    #     ]
-    #     self.df_text_units = pd.concat(
-    #         [self.df_text_units, units_df],
-    #         ignore_index=True,
-    #     )
-
-
-class EntityOutput(BaseModel):
-    entities: list[Entity] = Field(
-        title="Entities", description="List of entities identified."
-    )
-
-
-class NamedResolvedEntityOutput(BaseModel):
-    consolidated_entity: Entity = Field(
-        title="Consolidated Entity",
-        description=(
-            "The consolidated entity, combining all entities with the same name."
-        ),
-    )
-    unmatched_entities: list[Entity] = Field(
-        title="Unmatched Entities",
-        description="Entities that do not belong to this group.",
-    )
-
-
-class ResolvedEntityOutput(BaseModel):
-    entities: list[ResolvedEntity] = Field(
-        title="Resolved Entities",
-        description=("List of resolved entities, with their aliases and descriptions."),
-    )
-
-
-async def _extract_entities(
-    pipeline: GraphPipeline, document_df: pd.DataFrame
-) -> pd.DataFrame:
-    text_units = [TextUnit(**row.to_dict()) for _, row in document_df.iterrows()]
-
-    prompt = EXTRACT_ENTITIES_PROMPT.format(
-        entity_types=[t.value for t in pipeline.entity_types],
-        current_date=datetime.now(UTC).strftime("%Y-%m-%d"),
-    )
-
-    output = pipeline.llm.with_structured_output(EntityOutput)
-
-    tasks = [
-        pipeline._invoke_llm(
-            output.ainvoke,
-            [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": unit.text},
-            ],
-        )
-        for unit in text_units
-    ]
-    responses = await asyncio.gather(*tasks)
-
-    entities = [e for response in responses for e in response.entities]
-
-    return pd.DataFrame([entity.model_dump() for entity in entities])
-
-
-async def _resolve_entities_by_name(
-    pipeline: GraphPipeline, entity_df: pd.DataFrame
-) -> pd.DataFrame:
-    output = pipeline.llm.with_structured_output(NamedResolvedEntityOutput)
-
-    consolidated_entities = []
-    unmatched_entities = []
-    entity_names = set(entity_df["entity_name"])
-
-    tasks = []
-    for entity_name in entity_names:
-        similar_entities = [
-            Entity(**entity)
-            for entity in entity_df[entity_df["entity_name"] == entity_name].to_dict(
-                orient="records"
-            )
-        ]
-
-        if len(similar_entities) == 1:
-            consolidated_entities.append(similar_entities[0])
-            continue
-
-        tasks.append(
-            pipeline._invoke_llm(
-                output.ainvoke,
-                [
-                    {"role": "system", "content": NAMED_ENTITY_RESOLUTION},
-                    {
-                        "role": "user",
-                        "content": str(
-                            [entity.model_dump_json() for entity in similar_entities]
-                        ),
-                    },
-                ],
-            )
-        )
-
-    responses = await asyncio.gather(*tasks)
-
-    for response in responses:
-        consolidated_entities.append(response.consolidated_entity)
-        unmatched_entities.extend(response.unmatched_entities)
-
-    entities = consolidated_entities + unmatched_entities
-    return pd.DataFrame([entity.model_dump() for entity in entities])
-
-
-async def _resolve_document_entities(
-    pipeline: GraphPipeline, entity_df: pd.DataFrame
-) -> pd.DataFrame:
-    output = pipeline.llm.with_structured_output(ResolvedEntityOutput)
-
-    messages = [
-        {
-            "role": "system",
-            "content": SIMILAR_ENTITY_RESOLUTION,
-        },
-        {
-            "role": "user",
-            "content": entity_df.to_json(orient="records"),
-        },
-    ]
-
-    response = await pipeline._invoke_llm(output.ainvoke, messages)
-    return pd.DataFrame([entity.model_dump() for entity in response.entities])
-
-
-async def _resolve_global_entities(
-    pipeline: GraphPipeline, entity_df: pd.DataFrame
-) -> pd.DataFrame:
-    output = pipeline.llm.with_structured_output(ResolvedEntityOutput)
-    base_df = pipeline.df_entities.copy()
-
-    index = faiss.IndexFlatL2(1024)
-    index.add(np.array(base_df["description_embedded"].tolist()).astype(np.float32))
-
-    tfidf = TfidfVectorizer()
-    matrix = tfidf.fit_transform(base_df["entity_name"].tolist())
-
-    r_entities = pd.DataFrame()
-    r_idx = []
-
-    for _, entity in entity_df.iterrows():
-        # semantic match for descriptions
-        embed_description = await pipeline._embed_text(entity["entity_description"])
-        _, idx = index.search(np.array([embed_description]).astype(np.float32), 20)
-        desc_idx = idx.squeeze()
-
-        # lexical match for names
-        embed_name_sparse = tfidf.transform([entity["entity_name"]])
-        name_similarities = cosine_similarity(embed_name_sparse, matrix).ravel()
-        name_idx = np.argsort(name_similarities)[-10:][::-1]
-
-        similar_idx = np.concatenate([name_idx, desc_idx])
-        r_idx.extend(similar_idx)
-
-        entities_to_resolve = [
-            ResolvedEntity(**base_df.iloc[i].to_dict()) for i in similar_idx
-        ] + [ResolvedEntity(**entity.to_dict())]
-
-        messages = [
-            {
-                "role": "system",
-                "content": SIMILAR_ENTITY_RESOLUTION,
-            },
-            {
-                "role": "user",
-                "content": str(
-                    [entity.model_dump_json() for entity in entities_to_resolve]
-                ),
-            },
-        ]
-
-        response = await pipeline._invoke_llm(output.ainvoke, messages)
-        r_entities = pd.concat(
-            [
-                r_entities,
-                pd.DataFrame([entity.model_dump() for entity in response.entities]),
-            ]
-        )
-
-    base_df = base_df.drop(r_idx)
-    base_df = pd.concat([base_df, r_entities], ignore_index=True)
-    base_df = base_df.drop_duplicates(subset=["entity_name"], keep="last")
-
-    return base_df
-
-
-class RelationshipOutput(BaseModel):
-    relationships: list[Relationship] = Field(
-        title="Relationships",
-        description="List of relationships identified.",
-    )
-
-
-async def _extract_relationships(
-    pipeline: GraphPipeline, textunit_df: pd.DataFrame, entity_df: pd.DataFrame
-) -> pd.DataFrame:
-    output = pipeline.llm.with_structured_output(RelationshipOutput)
-
-    entities_json = entity_df.to_json(orient="records")
-
-    tasks = []
-    for _, row in textunit_df.iterrows():
-        messages = [
-            {"role": "system", "content": RELATIONSHIP_EXTRACTION},
-            {
-                "role": "user",
-                "content": f"""
-ENTITIES
-----------
-{entities_json}
-
-TEXT
-----------
-{row['text']}
-                """,
-            },
-        ]
-        tasks.append(pipeline._invoke_llm(output.ainvoke, messages))
-
-    responses = await asyncio.gather(*tasks)
-
-    relationship_df = pd.DataFrame(
-        [
-            relationship.model_dump()
-            for response in responses
-            for relationship in response.relationships
-        ]
-    )
-    return relationship_df
-
-
-class ClaimOutput(BaseModel):
-    claims: list[Claim] = Field(
-        title="Claims", description="List of claims identified in Step 2."
-    )
-
-
-async def _extract_claims(
-    pipeline: GraphPipeline, textunit_df: pd.DataFrame, entity_df: pd.DataFrame
-) -> pd.DataFrame:
-    prompt = CLAIM_EXTRACTION.format(
-        claim_types=[t.value for t in ClaimType],
-        current_date=datetime.now(UTC).strftime("%Y-%m-%d"),
-    )
-
-    output = pipeline.llm.with_structured_output(ClaimOutput)
-
-    tasks = []
-
-    for _, row in textunit_df.iterrows():
-        messages = [
-            {
-                "role": "system",
-                "content": prompt,
-            },
-            {
-                "role": "user",
-                "content": f"""
-ENTITIES
-----------
-{entity_df.to_json(orient="records")}
-
-TEXT
-----------
-{row['text']}
-        """,
-            },
-        ]
-        tasks.append(pipeline._invoke_llm(output.ainvoke, messages))
-
-    responses = await asyncio.gather(*tasks)
-
-    claims_df = pd.DataFrame(
-        [claim.model_dump() for response in responses for claim in response.claims]
-    )
-
-    return claims_df

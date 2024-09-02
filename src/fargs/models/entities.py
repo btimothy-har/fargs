@@ -33,12 +33,12 @@ class Entity(BaseModel):
             "(Example: UNITED NATIONS instead of UN)"
         ),
     )
-    entity_type: str = Field(
+    entity_type: DefaultEntityTypes = Field(
         title="Entity Type",
         description=(
-            "The type of the entity, in upper case. Select from the list of valid "
+            "The type of the entity. Select from the list of valid "
             "types provided to you in your instructions. If none of the types match, "
-            "you may use OTHER."
+            "you may use other."
         ),
     )
     entity_description: str = Field(
@@ -49,10 +49,22 @@ class Entity(BaseModel):
         ),
     )
 
-    @field_validator("entity_name", "entity_type", mode="before")
+    @field_validator("entity_name", mode="before")
     @classmethod
     def capitalize_fields(cls, value):
         return value.upper()
+
+    @field_validator("entity_type", mode="before")
+    @classmethod
+    def validate_entity_type(cls, value):
+        if str(value).lower() not in [t.value for t in DefaultEntityTypes]:
+            return DefaultEntityTypes.OTHER.value
+        return str(value).lower()
+
+    def model_dump(self, *args, **kwargs):
+        data = super().model_dump(*args, **kwargs)
+        data["entity_type"] = data["entity_type"].value
+        return data
 
 
 class ResolvedEntity(Entity):
@@ -60,11 +72,6 @@ class ResolvedEntity(Entity):
         title="Aliases",
         description="List of aliases for the entity, capitalized.",
     )
-
-    @field_validator("entity_name", "entity_type", mode="before")
-    @classmethod
-    def capitalize_fields(cls, value):
-        return value.upper()
 
     @model_validator(mode="after")
     def remove_self_alias(self):

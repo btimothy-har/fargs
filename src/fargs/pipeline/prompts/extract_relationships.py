@@ -5,6 +5,8 @@ RELATIONSHIP_EXTRACTION = """
 You will be presented with an incomplete text document, alongside with a list entities that have been identified from the broader context.
 Your task is to identify all pairs of (source_entity, target_entity) that are *clearly related* to each other, as described in the text.
 
+Relationships are defined as a connection between two entities that are explicitly mentioned in the text.
+
 ### INSTRUCTIONS ###
 
 STEP 1
@@ -21,6 +23,29 @@ You are ONLY to extract the entities that are clearly related to each other AND 
 For each pair of related entities, extract the following information formatted in this schema:
 - source_entity: name of the source entity, as identified in step 1
 - target_entity: name of the target entity, as identified in step 1
+
+STEP 3
+----------
+Consolidate your output from Step 2 into the schema provided to you.
+"""
+
+
+RELATIONSHIP_FILLER = """
+### YOUR GOAL ###
+You will be presented with two related entities and their descriptions, and the original text where these entities were found.
+Your task is to identify the relationship between the two entities and fill in the relationship_description and relationship_strength.
+
+### INSTRUCTIONS ###
+
+STEP 1
+----------
+Review the relationship, entities, and the text provided to you.
+
+STEP 2
+----------
+For the given pair of related entities, extract the following information formatted in this schema:
+- source_entity: name of the source entity
+- target_entity: name of the target entity
 - relationship_description: explanation of the relationship between the source and target entities
 - relationship_strength: a numeric float in 2 decimal places from 0.0 to 1.0 indicating the strength of the relationship
 
