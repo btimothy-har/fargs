@@ -1,3 +1,4 @@
+from .community_report import COMMUNITY_REPORT
 from .extract_claims import CLAIM_EXTRACTION
 from .extract_entities import EXTRACT_ENTITIES_PROMPT
 from .extract_relationships import RELATIONSHIP_EXTRACTION
@@ -12,4 +13,5 @@ __all__ = [
     "SIMILAR_ENTITY_RESOLUTION",
     "RELATIONSHIP_EXTRACTION",
     "RELATIONSHIP_FILLER",
+    "COMMUNITY_REPORT",
 ]

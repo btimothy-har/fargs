@@ -1,3 +1,4 @@
-from .main import GraphPipeline
+from .base import FargsConfig
+from .main import Fargs
 
-__all__ = ["GraphPipeline"]
+__all__ = ["Fargs", "FargsConfig"]

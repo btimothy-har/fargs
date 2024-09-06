@@ -1,3 +1,5 @@
+from typing import Any
+
 from aenum import Enum
 from pydantic import BaseModel
 from pydantic import Field
@@ -25,6 +27,8 @@ class DefaultEntityTypes(Enum):
 
 
 class Entity(BaseModel):
+    e_id: str | None = None
+    e_source_units: list[Any] | None = None
     entity_name: str = Field(
         title="Entity Name",
         description=(
@@ -48,6 +52,9 @@ class Entity(BaseModel):
             "entity's attributes and activities."
         ),
     )
+
+    def __str__(self):
+        return f"{self.entity_name}: {self.entity_description}"
 
     @field_validator("entity_name", mode="before")
     @classmethod
@@ -76,4 +83,5 @@ class ResolvedEntity(Entity):
     @model_validator(mode="after")
     def remove_self_alias(self):
         self.aliases = [alias for alias in self.aliases if alias != self.entity_name]
+        self.aliases = [alias.upper() for alias in self.aliases]
         return self

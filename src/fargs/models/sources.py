@@ -25,7 +25,8 @@ class Document(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def fill_content_hash(cls, data):
-        data["content_hash"] = md5(data["text"].encode()).hexdigest()
+        if "content_hash" not in data:
+            data["content_hash"] = md5(data["text"].encode()).hexdigest()
         return data
 
 
@@ -33,4 +34,4 @@ class TextUnit(BaseModel):
     doc_id: str
     unit_num: int
     text: str
-    embedding: list[float] = Field(default_factory=None)
+    embedding: list[float] = Field(default=None)

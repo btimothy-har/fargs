@@ -2,6 +2,8 @@
 #    uv pip compile requirements.in -o requirements.txt
 aenum==3.1.15
     # via -r requirements.in
+aiofiles==24.1.0
+    # via -r requirements.in
 aiohappyeyeballs==2.4.0
     # via aiohttp
 aiohttp==3.10.5
@@ -18,8 +20,14 @@ anyio==4.4.0
     # via
     #   httpx
     #   openai
+anytree==2.12.1
+    # via graspologic
 attrs==24.2.0
     # via aiohttp
+autograd==1.7.0
+    # via hyppo
+beartype==0.18.5
+    # via graspologic
 certifi==2024.7.4
     # via
     #   httpcore
@@ -27,16 +35,30 @@ certifi==2024.7.4
     #   requests
 charset-normalizer==3.3.2
     # via requests
+contourpy==1.3.0
+    # via matplotlib
+cycler==0.12.1
+    # via matplotlib
 dataclasses-json==0.6.7
     # via langchain-community
 distro==1.9.0
     # via openai
 faiss-cpu==1.8.0.post1
     # via -r requirements.in
+fonttools==4.53.1
+    # via matplotlib
 frozenlist==1.4.1
     # via
     #   aiohttp
     #   aiosignal
+future==1.0.0
+    # via -r requirements.in
+gensim==4.3.3
+    # via graspologic
+graspologic==3.4.1
+    # via -r requirements.in
+graspologic-native==1.2.1
+    # via graspologic
 h11==0.14.0
     # via httpcore
 httpcore==1.0.5
@@ -45,6 +67,8 @@ httpx==0.27.0
     # via
     #   langsmith
     #   openai
+hyppo==0.4.0
+    # via graspologic
 idna==3.7
     # via
     #   anyio
@@ -54,11 +78,16 @@ idna==3.7
 jiter==0.5.0
     # via openai
 joblib==1.4.2
-    # via scikit-learn
+    # via
+    #   graspologic
+    #   pynndescent
+    #   scikit-learn
 jsonpatch==1.33
     # via langchain-core
 jsonpointer==3.0.0
     # via jsonpatch
+kiwisolver==1.4.5
+    # via matplotlib
 langchain==0.2.14
     # via
     #   -r requirements.in
@@ -85,8 +114,17 @@ langsmith==0.1.104
     #   langchain
     #   langchain-community
     #   langchain-core
+llvmlite==0.43.0
+    # via
+    #   numba
+    #   pynndescent
 marshmallow==3.22.0
     # via dataclasses-json
+matplotlib==3.9.2
+    # via
+    #   -r requirements.in
+    #   graspologic
+    #   seaborn
 multidict==6.0.5
     # via
     #   aiohttp
@@ -94,17 +132,36 @@ multidict==6.0.5
 mypy-extensions==1.0.0
     # via typing-inspect
 networkx==3.3
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   graspologic
+numba==0.60.0
+    # via
+    #   hyppo
+    #   pynndescent
+    #   umap-learn
 numpy==1.26.4
     # via
     #   -r requirements.in
+    #   autograd
+    #   contourpy
     #   faiss-cpu
+    #   gensim
+    #   graspologic
+    #   hyppo
     #   langchain
     #   langchain-community
+    #   matplotlib
+    #   numba
     #   pandas
+    #   patsy
+    #   pot
     #   pyarrow
     #   scikit-learn
     #   scipy
+    #   seaborn
+    #   statsmodels
+    #   umap-learn
 openai==1.42.0
     # via langchain-openai
 orjson==3.10.7
@@ -114,8 +171,19 @@ packaging==24.1
     #   faiss-cpu
     #   langchain-core
     #   marshmallow
+    #   matplotlib
+    #   statsmodels
 pandas==2.2.2
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   seaborn
+    #   statsmodels
+patsy==0.5.6
+    # via statsmodels
+pillow==10.4.0
+    # via matplotlib
+pot==0.9.4
+    # via graspologic
 pyarrow==17.0.0
     # via -r requirements.in
 pydantic==2.8.2
@@ -127,8 +195,14 @@ pydantic==2.8.2
     #   openai
 pydantic-core==2.20.1
     # via pydantic
+pynndescent==0.5.13
+    # via umap-learn
+pyparsing==3.1.4
+    # via matplotlib
 python-dateutil==2.9.0.post0
-    # via pandas
+    # via
+    #   matplotlib
+    #   pandas
 python-dotenv==1.0.1
     # via -r requirements.in
 pytz==2024.1
@@ -147,11 +221,31 @@ requests==2.32.3
     #   langsmith
     #   tiktoken
 scikit-learn==1.5.1
-    # via -r requirements.in
-scipy==1.14.1
-    # via scikit-learn
+    # via
+    #   -r requirements.in
+    #   graspologic
+    #   hyppo
+    #   pynndescent
+    #   umap-learn
+scipy==1.12.0
+    # via
+    #   gensim
+    #   graspologic
+    #   hyppo
+    #   pot
+    #   pynndescent
+    #   scikit-learn
+    #   statsmodels
+    #   umap-learn
+seaborn==0.13.2
+    # via graspologic
 six==1.16.0
-    # via python-dateutil
+    # via
+    #   anytree
+    #   patsy
+    #   python-dateutil
+smart-open==7.0.4
+    # via gensim
 sniffio==1.3.1
     # via
     #   anyio
@@ -161,6 +255,8 @@ sqlalchemy==2.0.32
     # via
     #   langchain
     #   langchain-community
+statsmodels==0.14.2
+    # via graspologic
 tenacity==8.5.0
     # via
     #   langchain
@@ -171,9 +267,12 @@ threadpoolctl==3.5.0
 tiktoken==0.7.0
     # via langchain-openai
 tqdm==4.66.5
-    # via openai
+    # via
+    #   openai
+    #   umap-learn
 typing-extensions==4.12.2
     # via
+    #   graspologic
     #   langchain-core
     #   openai
     #   pydantic
@@ -184,7 +283,11 @@ typing-inspect==0.9.0
     # via dataclasses-json
 tzdata==2024.1
     # via pandas
+umap-learn==0.5.6
+    # via graspologic
 urllib3==2.2.2
     # via requests
+wrapt==1.16.0
+    # via smart-open
 yarl==1.9.4
     # via aiohttp

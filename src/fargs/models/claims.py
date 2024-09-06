@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel
 from pydantic import Field
@@ -26,6 +27,9 @@ class ClaimStatus(Enum):
 
 
 class Claim(BaseModel):
+    c_source_units: list[Any] | None = None
+    subject_id: str | None = None
+    object_id: str | None = None
     claim_subject: str = Field(
         title="Subject",
         description=(

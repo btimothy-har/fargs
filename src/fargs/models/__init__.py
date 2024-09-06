@@ -1,6 +1,7 @@
 from .claims import Claim
 from .claims import ClaimStatus
 from .claims import ClaimType
+from .community import CommunityReport
 from .entities import DefaultEntityTypes
 from .entities import Entity
 from .entities import ResolvedEntity
@@ -29,4 +30,5 @@ __all__ = [
     "ResolvedEntityOutput",
     "RelationshipOutput",
     "ClaimOutput",
+    "CommunityReport",
 ]
