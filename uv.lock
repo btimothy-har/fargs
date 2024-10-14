@@ -463,8 +463,8 @@ dependencies = [
     { name = "networkx" },
     { name = "pydantic" },
     { name = "requests" },
-    { name = "retry" },
     { name = "retry-async" },
+    { name = "retry2" },
     { name = "torch" },
 ]
 
@@ -488,8 +488,8 @@ requires-dist = [
     { name = "networkx", specifier = "~=3.3" },
     { name = "pydantic", specifier = "~=2.9.2" },
     { name = "requests", specifier = "~=2.32" },
-    { name = "retry", specifier = "~=0.9.2" },
     { name = "retry-async", specifier = "~=0.1.4" },
+    { name = "retry2", specifier = "~=0.9.5" },
     { name = "torch", specifier = "~=2.4.1" },
 ]
 
@@ -1586,15 +1586,6 @@ wheels = [
 ]
 
 [[package]]
-name = "py"
-version = "1.11.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/98/ff/fec109ceb715d2a6b4c4a85a61af3b40c723a961e8828319fbcb15b868dc/py-1.11.0.tar.gz", hash = "sha256:51c75c4126074b472f746a24399ad32f6053d1b34b68d2fa41e558e6f4a98719", size = 207796 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/f0/10642828a8dfb741e5f3fbaac830550a518a775c7fff6f04a007259b0548/py-1.11.0-py2.py3-none-any.whl", hash = "sha256:607c53218732647dff4acdfcd50cb62615cedf612e72d1724fb1a0cc6405b378", size = 98708 },
-]
-
-[[package]]
 name = "pydantic"
 version = "2.9.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1796,19 +1787,6 @@ wheels = [
 ]
 
 [[package]]
-name = "retry"
-version = "0.9.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "decorator" },
-    { name = "py" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/72/75d0b85443fbc8d9f38d08d2b1b67cc184ce35280e4a3813cda2f445f3a4/retry-0.9.2.tar.gz", hash = "sha256:f8bfa8b99b69c4506d6f5bd3b0aabf77f98cdb17f3c9fc3f5ca820033336fba4", size = 6448 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/4b/0d/53aea75710af4528a25ed6837d71d117602b01946b307a3912cb3cfcbcba/retry-0.9.2-py2.py3-none-any.whl", hash = "sha256:ccddf89761fa2c726ab29391837d4327f819ea14d244c232a1d24c67a2f98606", size = 7986 },
-]
-
-[[package]]
 name = "retry-async"
 version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1818,6 +1796,17 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/76/c0/4e06ba064b7d648f33dadd92f298e9e39960af73c5f3bdfb58f602d78710/retry_async-0.1.4.tar.gz", hash = "sha256:8414d69b20920a1d700de34b68c0f972fa36a0158450a6f6abc5b45a241ac6b6", size = 2189 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2e/fb/14f39d3a6e91b6c3ba6e8b1c06ca25c0b421a8806912a3fa02bbe699a002/retry_async-0.1.4-py3-none-any.whl", hash = "sha256:21b383c7bc52013478337b894f476c9f106485cfeeb5d449abe5f745be2da219", size = 2706 },
+]
+
+[[package]]
+name = "retry2"
+version = "0.9.5"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "decorator" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/97/49/1cae6d9b932378cc75f902fa70648945b7ea7190cb0d09ff83b47de3e60a/retry2-0.9.5-py2.py3-none-any.whl", hash = "sha256:f7fee13b1e15d0611c462910a6aa72a8919823988dd0412152bc3719c89a4e55", size = 6013 },
 ]
 
 [[package]]
