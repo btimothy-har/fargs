@@ -26,7 +26,7 @@ from .components import CommunitySummarizer
 from .components import EntityExtractor
 from .components import GraphLoader
 from .components import RelationshipExtractor
- 
+
 INGESTION_RESTRICTED_KEYS = [
     "project_name",
     "name",
@@ -214,14 +214,8 @@ class Fargs:
             **self.index_kwargs,
         )
 
-    async def ingest(self, items: list[Document]) -> list[BaseNode] | None:
-        if len(items) == 0:
-            return []
-
-        extracted = await self.extraction_pipeline.arun(
-            documents=items,
-            show_progress=True,
-        )
+    async def ingest(self, **kwargs) -> list[BaseNode] | None:
+        extracted = await self.extraction_pipeline.arun(**kwargs)
         return extracted
 
     async def summarize(self, max_cluster_size=10) -> list[BaseNode] | None:
