@@ -130,11 +130,12 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         }
 
         if existing_entity:
-            entity_values["description"] = await self.invoke_llm(
+            summary = await self.invoke_llm(
                 node_type="entity",
                 title=entity_values["name"],
                 description=entity_values["description"],
             )
+            entity_values["description"] = summary.text
 
         entity_node = EntityNode(
             name=entity_values["name"],
@@ -191,11 +192,12 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         }
 
         if existing_relation:
-            relation_values["description"] = await self.invoke_llm(
+            summary = await self.invoke_llm(
                 node_type="relation",
                 title=relation_values["source_entity"],
                 description=relation_values["description"],
             )
+            relation_values["description"] = summary.text
 
         relation_node = Relation(
             label=relation_values["relation_type"],

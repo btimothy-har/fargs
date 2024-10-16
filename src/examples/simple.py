@@ -1,14 +1,14 @@
 import asyncio
 import os
-
-from fargs import Fargs
 from enum import Enum
 
-from llama_index.core.schema import Document
 from llama_index.core.embeddings import OpenAIEmbedding
 from llama_index.core.embeddings import OpenAIEmbeddingMode
 from llama_index.core.node_parser import SemanticSplitterNodeParser
+from llama_index.core.schema import Document
 from llama_index.graph_stores.neo4j import Neo4jPropertyGraphStore
+
+from fargs import Fargs
 
 
 class ClaimTypes(Enum):
