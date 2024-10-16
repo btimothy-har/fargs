@@ -1,5 +1,6 @@
 import asyncio
-
+import ell
+from typing import Literal
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.graph_stores import ChunkNode
 from llama_index.core.graph_stores import EntityNode
@@ -7,16 +8,28 @@ from llama_index.core.graph_stores import PropertyGraphStore
 from llama_index.core.graph_stores import Relation
 from llama_index.core.schema import BaseNode
 from llama_index.core.schema import TransformComponent
+from pydantic import Field
 from pydantic import PrivateAttr
 
+from fargs.config import default_extraction_llm
 from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
 from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
+from fargs.prompts import SUMMARIZE_NODE_PROMPT
+from .base import LLMPipelineComponent
 
 
-class GraphLoader(TransformComponent):
+SUMMARIZE_NODE_MESSAGE = """
+TYPE: {type}
+TITLE: {title}
+DESCRIPTION: {description}
+"""
+
+class GraphLoader(TransformComponent, LLMPipelineComponent):
+    config: dict = Field(default_factory=dict)
+
     _graph_store: PropertyGraphStore | None = PrivateAttr(default=None)
     _embeddings: BaseEmbedding | None = PrivateAttr(default=None)
     _excluded_embed_metadata_keys: list[str] | None = PrivateAttr(default=None)
@@ -26,6 +39,7 @@ class GraphLoader(TransformComponent):
         self,
         graph_store: PropertyGraphStore,
         embeddings: BaseEmbedding,
+        overwrite_config: dict | None = None,
         excluded_embed_metadata_keys: list[str] | None = None,
         excluded_llm_metadata_keys: list[str] | None = None,
         **kwargs,
@@ -35,6 +49,8 @@ class GraphLoader(TransformComponent):
         self._embeddings = embeddings
         self._excluded_embed_metadata_keys = excluded_embed_metadata_keys
         self._excluded_llm_metadata_keys = excluded_llm_metadata_keys
+
+        self.config = overwrite_config or default_extraction_llm
 
     def __call__(self, nodes: list[BaseNode], **kwargs) -> list[BaseNode]:
         asyncio.run(self.acall(nodes, **kwargs))
@@ -111,6 +127,13 @@ class GraphLoader(TransformComponent):
             ),
         }
 
+        if existing_entity:
+            entity_values["description"] = await self.invoke_llm(
+                type="entity",
+                title=entity_values["name"],
+                description=entity_values["description"],
+            )
+
         entity_node = EntityNode(
             name=entity_values["name"],
             label=entity_values["entity_type"],
@@ -164,6 +187,13 @@ class GraphLoader(TransformComponent):
                 else [parent_node.metadata.get("doc_id", parent_node.node_id)]
             ),
         }
+
+        if existing_relation:
+            relation_values["description"] = await self.invoke_llm(
+                type="relation",
+                title=relation_values["source_entity"],
+                description=relation_values["description"],
+            )
 
         relation_node = Relation(
             label=relation_values["relation_type"],
@@ -236,3 +266,17 @@ class GraphLoader(TransformComponent):
             self._graph_store.upsert_relations(rel_nodes)
 
         return chunk_node
+
+    def _construct_function(self):
+        @ell.complex(**self.config)
+        def summarize_node(
+            type: Literal["entity", "relation"],
+            title: str,
+            description: str,
+        ):
+            return [
+                ell.system(SUMMARIZE_NODE_PROMPT),
+                ell.user(SUMMARIZE_NODE_MESSAGE.format(type=type, title=title, description=description)),
+            ]
+
+        return summarize_node

@@ -2,10 +2,12 @@ from .claims import EXTRACT_CLAIMS_PROMPT
 from .communities import COMMUNITY_REPORT
 from .entities import EXTRACT_ENTITIES_PROMPT
 from .relationships import EXTRACT_RELATIONSHIPS_PROMPT
+from .summarize import SUMMARIZE_NODE_PROMPT
 
 __all__ = [
     "EXTRACT_ENTITIES_PROMPT",
     "EXTRACT_RELATIONSHIPS_PROMPT",
     "EXTRACT_CLAIMS_PROMPT",
     "COMMUNITY_REPORT",
+    "SUMMARIZE_NODE_PROMPT",
 ]

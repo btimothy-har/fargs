@@ -26,7 +26,7 @@ from .components import CommunitySummarizer
 from .components import EntityExtractor
 from .components import GraphLoader
 from .components import RelationshipExtractor
-
+ 
 INGESTION_RESTRICTED_KEYS = [
     "project_name",
     "name",
