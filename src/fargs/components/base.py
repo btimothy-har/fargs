@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from pydantic import PrivateAttr
 
 from fargs.exceptions import FargsNoResponseError
-from fargs.utils import rate_limited_task
+from fargs.utils import token_limited_task
 
 
 class LLMPipelineComponent(BaseModel, ABC):
@@ -25,7 +25,7 @@ class LLMPipelineComponent(BaseModel, ABC):
             self._llm_fn = self._construct_function()
         return self._llm_fn
 
-    @rate_limited_task(max_rate=os.getenv("FARGS_LLM_RATE_LIMIT", 10))
+    @token_limited_task(max_tokens=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000))
     async def invoke_llm(self, **kwargs):
         llm_result = await asyncio.to_thread(self.llm_fn, **kwargs)
         if len(llm_result.text) == 0:
