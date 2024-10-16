@@ -21,6 +21,7 @@ dependencies = [
     "networkx~=3.3",
     "graspologic~=3.4.1",
     "future>=1.0.0",
+    "tiktoken~=0.8.0",
 ]
 
 [build-system]

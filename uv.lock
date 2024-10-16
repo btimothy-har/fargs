@@ -466,6 +466,7 @@ dependencies = [
     { name = "requests" },
     { name = "retry-async" },
     { name = "retry2" },
+    { name = "tiktoken" },
     { name = "torch" },
 ]
 
@@ -491,6 +492,7 @@ requires-dist = [
     { name = "requests", specifier = "~=2.32" },
     { name = "retry-async", specifier = "~=0.1.4" },
     { name = "retry2", specifier = "~=0.9.5" },
+    { name = "tiktoken", specifier = "~=0.8.0" },
     { name = "torch", specifier = "~=2.4.1" },
 ]
 
