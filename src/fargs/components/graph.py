@@ -1,6 +1,7 @@
 import asyncio
-import ell
 from typing import Literal
+
+import ell
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.graph_stores import ChunkNode
 from llama_index.core.graph_stores import EntityNode
@@ -15,17 +16,18 @@ from fargs.config import default_extraction_llm
 from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
+from fargs.prompts import SUMMARIZE_NODE_PROMPT
 from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
-from fargs.prompts import SUMMARIZE_NODE_PROMPT
-from .base import LLMPipelineComponent
 
+from .base import LLMPipelineComponent
 
 SUMMARIZE_NODE_MESSAGE = """
 TYPE: {type}
 TITLE: {title}
 DESCRIPTION: {description}
 """
+
 
 class GraphLoader(TransformComponent, LLMPipelineComponent):
     config: dict = Field(default_factory=dict)
@@ -129,7 +131,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
         if existing_entity:
             entity_values["description"] = await self.invoke_llm(
-                type="entity",
+                node_type="entity",
                 title=entity_values["name"],
                 description=entity_values["description"],
             )
@@ -190,7 +192,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
         if existing_relation:
             relation_values["description"] = await self.invoke_llm(
-                type="relation",
+                node_type="relation",
                 title=relation_values["source_entity"],
                 description=relation_values["description"],
             )
@@ -270,13 +272,17 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
     def _construct_function(self):
         @ell.complex(**self.config)
         def summarize_node(
-            type: Literal["entity", "relation"],
+            node_type: Literal["entity", "relation"],
             title: str,
             description: str,
         ):
             return [
                 ell.system(SUMMARIZE_NODE_PROMPT),
-                ell.user(SUMMARIZE_NODE_MESSAGE.format(type=type, title=title, description=description)),
+                ell.user(
+                    SUMMARIZE_NODE_MESSAGE.format(
+                        type=node_type, title=title, description=description
+                    )
+                ),
             ]
 
         return summarize_node
