@@ -3,7 +3,6 @@ from collections import defaultdict
 from enum import Enum
 
 import networkx as nx
-from graspologic.partition import hierarchical_leiden
 from llama_index.core import PropertyGraphIndex
 from llama_index.core import VectorStoreIndex
 from llama_index.core.base.embeddings.base import BaseEmbedding
@@ -220,6 +219,8 @@ class Fargs:
         return extracted
 
     async def summarize(self, max_cluster_size=10) -> list[BaseNode] | None:
+        from graspologic.partition import hierarchical_leiden
+
         nx_graph = self._create_nx_graph()
         if not nx_graph:
             return None
