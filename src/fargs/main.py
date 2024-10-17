@@ -118,6 +118,7 @@ class Fargs:
             "relationships": RelationshipExtractor,
             "claims": ClaimsExtractor,
             "communities": CommunitySummarizer,
+            "graph": GraphLoader,
         }
 
         self._extraction_pipeline = None
@@ -153,7 +154,7 @@ class Fargs:
                         claim_types=self.claim_types,
                         overwrite_config=self.extraction_llm_model,
                     ),
-                    GraphLoader(
+                    self._components["graph"](
                         self.graph_store,
                         self.embedding_strategy,
                         excluded_embed_metadata_keys=self.excluded_embed_metadata_keys,
