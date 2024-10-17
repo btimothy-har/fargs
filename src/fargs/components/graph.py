@@ -12,8 +12,11 @@ from llama_index.core.schema import BaseNode
 from llama_index.core.schema import TransformComponent
 from pydantic import Field
 from pydantic import PrivateAttr
+from retry_async import retry
 
 from fargs.config import default_extraction_llm
+from fargs.config import default_retry_config
+from fargs.exceptions import FargsLLMError
 from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
@@ -95,6 +98,11 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         return node
 
     async def _transform_entities(self, nodes: list[BaseNode]):
+        @retry(
+            (FargsLLMError),
+            is_async=True,
+            **default_retry_config,
+        )
         async def _transform(key: str, entities: list[DummyEntity]) -> EntityNode:
             new_entity_values = {
                 "id": key,
@@ -140,11 +148,15 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            summary = await self.invoke_llm(
-                node_type="entity",
-                title=entity_values["name"],
-                description=entity_values["description"],
-            )
+            try:
+                summary = await self.invoke_llm(
+                    node_type="entity",
+                    title=entity_values["name"],
+                    description=entity_values["description"],
+                )
+            except FargsLLMError as e:
+                raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+
             entity_values["description"] = summary.text
 
             entity_node = EntityNode(
@@ -181,6 +193,11 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         self._graph_store.upsert_nodes(entity_nodes)
 
     async def _transform_relations(self, nodes: list[BaseNode]):
+        @retry(
+            (FargsLLMError),
+            is_async=True,
+            **default_retry_config,
+        )
         async def _transform(key: str, relations: list[Relationship]) -> Relation:
             new_relation_values = {
                 "id": key,
@@ -226,15 +243,19 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            summary = await self.invoke_llm(
-                node_type="relation",
-                title=(
-                    f"{relation_values['source_entity']} -> "
-                    f"{relation_values['relation_type']} -> "
-                    f"{relation_values['target_entity']}"
-                ),
-                description=relation_values["description"],
-            )
+            try:
+                summary = await self.invoke_llm(
+                    node_type="relation",
+                    title=(
+                        f"{relation_values['source_entity']} -> "
+                        f"{relation_values['relation_type']} -> "
+                        f"{relation_values['target_entity']}"
+                    ),
+                    description=relation_values["description"],
+                )
+            except FargsLLMError as e:
+                raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+
             relation_values["description"] = summary.text
 
             relation_node = Relation(

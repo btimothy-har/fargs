@@ -25,6 +25,14 @@ default_summarization_llm = {
     "temperature": 0.0,
 }
 
+default_retry_config = {
+    "tries": 3,
+    "delay": 0,
+    "max_delay": 10,
+    "backoff": 1.5,
+    "jitter": 1,
+}
+
 
 default_embeddings = OpenAIEmbedding(
     mode=OpenAIEmbeddingMode.TEXT_SEARCH_MODE,

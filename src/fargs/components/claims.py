@@ -13,6 +13,7 @@ from pydantic import PrivateAttr
 from retry_async import retry
 
 from fargs.config import default_extraction_llm
+from fargs.config import default_retry_config
 from fargs.exceptions import FargsExtractionError
 from fargs.exceptions import FargsLLMError
 from fargs.models import DefaultClaimTypes
@@ -115,9 +116,7 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
     @retry(
         (FargsLLMError, FargsExtractionError),
         is_async=True,
-        tries=3,
-        delay=1,
-        backoff=2,
+        **default_retry_config,
     )
     async def invoke_and_parse_results(self, node):
         if not node.metadata.get("entities"):
