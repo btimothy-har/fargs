@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pydantic import BaseModel
 from pydantic import PrivateAttr
 
+from fargs.exceptions import FargsLLMError
 from fargs.exceptions import FargsNoResponseError
 from fargs.utils import token_limited_task
 
@@ -27,7 +28,11 @@ class LLMPipelineComponent(BaseModel, ABC):
 
     @token_limited_task(max_tokens=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000))
     async def invoke_llm(self, **kwargs):
-        llm_result = await asyncio.to_thread(self.llm_fn, **kwargs)
+        try:
+            llm_result = await asyncio.to_thread(self.llm_fn, **kwargs)
+        except Exception as e:
+            raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+
         if len(llm_result.text) == 0:
             raise FargsNoResponseError("LLM returned an empty response")
         return llm_result

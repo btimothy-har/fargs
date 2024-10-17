@@ -1,5 +1,7 @@
 import asyncio
+import os
 from collections import defaultdict
+from typing import Any
 from typing import Literal
 
 import ell
@@ -21,6 +23,7 @@ from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
 from fargs.prompts import SUMMARIZE_NODE_PROMPT
+from fargs.utils import token_limited_task
 from fargs.utils import tqdm_iterable
 
 from .base import LLMPipelineComponent
@@ -71,6 +74,18 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             transformed.append(await task)
 
         return transformed
+
+    @retry(
+        (FargsLLMError),
+        is_async=True,
+        **default_retry_config,
+    )
+    @token_limited_task(max_tokens=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000))
+    async def _embed_node(self, node: Any):
+        try:
+            return await self._embeddings.aget_text_embedding(str(node))
+        except Exception as e:
+            raise FargsLLMError(f"Failed to embed node: {e}") from e
 
     async def _transform_node(self, node: BaseNode, **kwargs) -> BaseNode:
         node.metadata.pop("entities", None)
@@ -148,14 +163,11 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            try:
-                summary = await self.invoke_llm(
-                    node_type="entity",
-                    title=entity_values["name"],
-                    description=entity_values["description"],
-                )
-            except FargsLLMError as e:
-                raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+            summary = await self.invoke_llm(
+                node_type="entity",
+                title=entity_values["name"],
+                description=entity_values["description"],
+            )
 
             entity_values["description"] = summary.text
 
@@ -245,18 +257,15 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            try:
-                summary = await self.invoke_llm(
-                    node_type="relation",
-                    title=(
-                        f"{relation_values['source_entity']} -> "
-                        f"{relation_values['relation_type']} -> "
-                        f"{relation_values['target_entity']}"
-                    ),
-                    description=relation_values["description"],
-                )
-            except FargsLLMError as e:
-                raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+            summary = await self.invoke_llm(
+                node_type="relation",
+                title=(
+                    f"{relation_values['source_entity']} -> "
+                    f"{relation_values['relation_type']} -> "
+                    f"{relation_values['target_entity']}"
+                ),
+                description=relation_values["description"],
+            )
 
             relation_values["description"] = summary.text
 

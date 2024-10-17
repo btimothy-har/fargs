@@ -79,10 +79,7 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
     async def summarize_community(self, node: BaseNode, **kwargs) -> BaseNode:
         raw_text = node.text
 
-        try:
-            raw_result = await self.invoke_llm(community_text=raw_text)
-        except Exception as e:
-            raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+        raw_result = await self.invoke_llm(community_text=raw_text)
 
         if "gpt-4o" in self.config["model"]:
             result = raw_result.parsed

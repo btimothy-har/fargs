@@ -110,10 +110,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
     async def invoke_and_parse_results(self, node):
         entities = []
 
-        try:
-            raw_result = await self.invoke_llm(node_text=node.text)
-        except Exception as e:
-            raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+        raw_result = await self.invoke_llm(node_text=node.text)
 
         if "gpt-4o" in self.config["model"]:
             parsed_output = raw_result.parsed

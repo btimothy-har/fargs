@@ -119,13 +119,10 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
             ]
         )
 
-        try:
-            raw_result = await self.invoke_llm(
-                entities_json=entities_json,
-                text_unit=node.text,
-            )
-        except Exception as e:
-            raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+        raw_result = await self.invoke_llm(
+            entities_json=entities_json,
+            text_unit=node.text,
+        )
 
         if "gpt-4o" in self.config["model"]:
             parsed_output = raw_result.parsed
