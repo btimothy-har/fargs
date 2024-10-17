@@ -177,7 +177,9 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
         all_entities = defaultdict(list)
         entities = [
-            entity for node in nodes for entity in node.metadata.pop("entities", [])
+            entity
+            for node in nodes
+            for entity in node.metadata.pop("entities", []) or []
         ]
         for entity in entities:
             all_entities[entity.key].append(entity)
@@ -274,7 +276,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         relationships = [
             relationship
             for node in nodes
-            for relationship in node.metadata.pop("relationships", [])
+            for relationship in node.metadata.pop("relationships", []) or []
         ]
         for relationship in relationships:
             all_relationships[relationship.key].append(relationship)
