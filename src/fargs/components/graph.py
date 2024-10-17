@@ -102,7 +102,9 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 "entity_type": entities[0].entity_type.value,
                 "description": " ".join(f"{entity.description}" for entity in entities),
                 "attributes": {
-                    k: v for entity in entities for k, v in entity.attributes
+                    attr.name: attr.value
+                    for entity in entities
+                    for attr in entity.attributes
                 },
             }
 
