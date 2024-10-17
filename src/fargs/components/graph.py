@@ -1,4 +1,5 @@
 import asyncio
+from collections import defaultdict
 from typing import Literal
 
 import ell
@@ -11,13 +12,15 @@ from llama_index.core.schema import BaseNode
 from llama_index.core.schema import TransformComponent
 from pydantic import Field
 from pydantic import PrivateAttr
+from retry_async import retry
 
 from fargs.config import default_extraction_llm
+from fargs.config import default_retry_config
+from fargs.exceptions import FargsLLMError
 from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
 from fargs.prompts import SUMMARIZE_NODE_PROMPT
-from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
 
 from .base import LLMPipelineComponent
@@ -58,7 +61,10 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         asyncio.run(self.acall(nodes, **kwargs))
 
     async def acall(self, nodes: list[BaseNode], **kwargs) -> list[BaseNode]:
-        tasks = [asyncio.create_task(self.transform_node(node)) for node in nodes]
+        await self._transform_entities(nodes)
+        await self._transform_relations(nodes)
+
+        tasks = [asyncio.create_task(self._transform_node(node)) for node in nodes]
 
         transformed = []
         async for task in tqdm_iterable(tasks, "Transforming nodes..."):
@@ -66,156 +72,226 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
         return transformed
 
-    @sequential_task()
-    async def transform_node(self, node: BaseNode, **kwargs) -> BaseNode:
-        entities = node.metadata.pop("entities", None)
-        relationships = node.metadata.pop("relationships", None)
+    async def _transform_node(self, node: BaseNode, **kwargs) -> BaseNode:
+        node.metadata.pop("entities", None)
+        node.metadata.pop("relationships", None)
+
         claims = node.metadata.pop("claims", None)
 
-        if entities:
-            for e in entities:
-                await self._upsert_entity_node(node, e)
-
-        if relationships:
-            for r in relationships:
-                await self._upsert_relation_node(node, r)
-
         if claims:
-            for c in claims:
-                await self._upsert_claim_node(node, c)
+            tasks = [
+                asyncio.create_task(self._transform_claim(node, c)) for c in claims
+            ]
+
+            chunk_nodes = []
+            rel_nodes = []
+            for task in tasks:
+                chunk_node, rel_nodes = await task
+                chunk_nodes.append(chunk_node)
+                rel_nodes.extend(rel_nodes)
+
+            self._graph_store.upsert_nodes(chunk_nodes)
+            self._graph_store.upsert_relations(rel_nodes)
 
         node.excluded_embed_metadata_keys = self._excluded_embed_metadata_keys
         node.excluded_llm_metadata_keys = self._excluded_llm_metadata_keys
         return node
 
-    async def _upsert_entity_node(
-        self, parent_node: BaseNode, entity: DummyEntity
-    ) -> EntityNode:
-        get_existing_entity = self._graph_store.get(ids=[entity.key])
+    async def _transform_entities(self, nodes: list[BaseNode]):
+        @retry(
+            (FargsLLMError),
+            is_async=True,
+            **default_retry_config,
+        )
+        async def _transform(key: str, entities: list[DummyEntity]) -> EntityNode:
+            new_entity_values = {
+                "id": key,
+                "name": entities[0].name,
+                "entity_type": entities[0].entity_type.value,
+                "description": " ".join(f"{entity.description}" for entity in entities),
+                "attributes": {
+                    attr.name: attr.value
+                    for entity in entities
+                    for attr in entity.attributes
+                },
+            }
 
-        existing_entity = get_existing_entity[0] if get_existing_entity else None
+            get_existing_entity = self._graph_store.get(ids=[key])
 
-        entity_values = {
-            "id": entity.key,
-            "name": entity.name,
-            "entity_type": entity.entity_type.value,
-            "description": (
-                (
-                    f"{existing_entity.properties.get('description', '')} "
-                    f"{entity.description}"
+            existing_entity = get_existing_entity[0] if get_existing_entity else None
+
+            entity_values = {
+                "id": key,
+                "name": entities[0].name,
+                "entity_type": entities[0].entity_type.value,
+                "description": (
+                    (
+                        f"{existing_entity.properties.get('description', '')} "
+                        f"{new_entity_values['description']}"
+                    )
+                    if existing_entity
+                    else new_entity_values["description"]
+                ),
+                "attributes": (
+                    {
+                        **(
+                            {
+                                k: v
+                                for k, v in existing_entity.properties.items()
+                                if k not in ["sources", "description"]
+                            }
+                            if existing_entity
+                            else {}
+                        ),
+                        **new_entity_values["attributes"],
+                    }
+                ),
+            }
+
+            try:
+                summary = await self.invoke_llm(
+                    node_type="entity",
+                    title=entity_values["name"],
+                    description=entity_values["description"],
                 )
-                if existing_entity
-                else entity.description
-            ),
-            "attributes": (
-                {
-                    **(
-                        {
-                            k: v
-                            for k, v in existing_entity.properties.items()
-                            if k not in ["sources", "description"]
-                        }
-                        if existing_entity
-                        else {}
-                    ),
-                    **{attr.name: attr.value for attr in entity.attributes},
-                }
-            ),
-            "sources": (
-                existing_entity.properties.get("sources", [])
-                + [parent_node.metadata.get("doc_id", parent_node.node_id)]
-                if existing_entity
-                else [parent_node.metadata.get("doc_id", parent_node.node_id)]
-            ),
-        }
+            except FargsLLMError as e:
+                raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
 
-        if existing_entity:
-            summary = await self.invoke_llm(
-                node_type="entity",
-                title=entity_values["name"],
-                description=entity_values["description"],
-            )
             entity_values["description"] = summary.text
 
-        entity_node = EntityNode(
-            name=entity_values["name"],
-            label=entity_values["entity_type"],
-            properties={
-                "sources": entity_values["sources"],
-                "description": entity_values["description"],
-                **entity_values["attributes"],
-            },
-        )
-
-        if self._graph_store.supports_vector_queries:
-            entity_node.properties[
-                "embedding"
-            ] = await self._embeddings.aget_text_embedding(str(entity_node))
-
-        self._graph_store.upsert_nodes([entity_node])
-        return entity_node
-
-    async def _upsert_relation_node(
-        self, parent_node: BaseNode, relation: Relationship
-    ) -> Relation:
-        get_existing_relation = self._graph_store.get_triplets(
-            ids=[relation.key],
-        )
-
-        existing_relation = get_existing_relation[0] if get_existing_relation else None
-
-        relation_values = {
-            "id": relation.key,
-            "source_entity": relation.source_entity.replace('"', " "),
-            "target_entity": relation.target_entity.replace('"', " "),
-            "relation_type": relation.relation_type,
-            "description": (
-                (
-                    f"{existing_relation.properties.get('description', '')} "
-                    f"{relation.description}"
-                )
-                if existing_relation
-                else relation.description
-            ),
-            "strength": (
-                (existing_relation.properties.get("strength", 0) + relation.strength)
-                / 2
-                if existing_relation
-                else relation.strength
-            ),
-            "sources": (
-                existing_relation.properties.get("sources", [])
-                + [parent_node.metadata.get("doc_id", parent_node.node_id)]
-                if existing_relation
-                else [parent_node.metadata.get("doc_id", parent_node.node_id)]
-            ),
-        }
-
-        if existing_relation:
-            summary = await self.invoke_llm(
-                node_type="relation",
-                title=relation_values["source_entity"],
-                description=relation_values["description"],
+            entity_node = EntityNode(
+                name=entity_values["name"],
+                label=entity_values["entity_type"],
+                properties={
+                    "description": entity_values["description"],
+                    **entity_values["attributes"],
+                },
             )
+
+            if self._graph_store.supports_vector_queries:
+                entity_node.properties[
+                    "embedding"
+                ] = await self._embeddings.aget_text_embedding(str(entity_node))
+
+            return entity_node
+
+        all_entities = defaultdict(list)
+        entities = [
+            entity for node in nodes for entity in node.metadata.pop("entities", [])
+        ]
+        for entity in entities:
+            all_entities[entity.key].append(entity)
+
+        tasks = [
+            asyncio.create_task(_transform(key, entities))
+            for key, entities in all_entities.items()
+        ]
+        entity_nodes = []
+        async for task in tqdm_iterable(tasks, "Transforming entities..."):
+            entity_nodes.append(await task)
+
+        self._graph_store.upsert_nodes(entity_nodes)
+
+    async def _transform_relations(self, nodes: list[BaseNode]):
+        @retry(
+            (FargsLLMError),
+            is_async=True,
+            **default_retry_config,
+        )
+        async def _transform(key: str, relations: list[Relationship]) -> Relation:
+            new_relation_values = {
+                "id": key,
+                "source_entity": relations[0].source_entity,
+                "target_entity": relations[0].target_entity,
+                "relation_type": relations[0].relation_type,
+                "description": " ".join(
+                    f"{relation.description}" for relation in relations
+                ),
+                "strength": sum(relation.strength for relation in relations)
+                / len(relations),
+            }
+
+            get_existing_relation = self._graph_store.get_triplets(
+                ids=[key],
+            )
+
+            existing_relation = (
+                get_existing_relation[0] if get_existing_relation else None
+            )
+
+            relation_values = {
+                "id": key,
+                "source_entity": new_relation_values["source_entity"],
+                "target_entity": new_relation_values["target_entity"],
+                "relation_type": new_relation_values["relation_type"],
+                "description": (
+                    (
+                        f"{existing_relation.properties.get('description', '')} "
+                        f"{new_relation_values['description']}"
+                    )
+                    if existing_relation
+                    else new_relation_values["description"]
+                ),
+                "strength": (
+                    (
+                        existing_relation.properties.get("strength", 0)
+                        + new_relation_values["strength"]
+                    )
+                    / 2
+                    if existing_relation
+                    else new_relation_values["strength"]
+                ),
+            }
+
+            try:
+                summary = await self.invoke_llm(
+                    node_type="relation",
+                    title=(
+                        f"{relation_values['source_entity']} -> "
+                        f"{relation_values['relation_type']} -> "
+                        f"{relation_values['target_entity']}"
+                    ),
+                    description=relation_values["description"],
+                )
+            except FargsLLMError as e:
+                raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+
             relation_values["description"] = summary.text
 
-        relation_node = Relation(
-            label=relation_values["relation_type"],
-            source_id=relation_values["source_entity"],
-            target_id=relation_values["target_entity"],
-            properties={
-                "sources": relation_values["sources"],
-                "description": relation_values["description"],
-                "strength": relation_values["strength"],
-            },
-        )
+            relation_node = Relation(
+                label=relation_values["relation_type"],
+                source_id=relation_values["source_entity"],
+                target_id=relation_values["target_entity"],
+                properties={
+                    "description": relation_values["description"],
+                    "strength": relation_values["strength"],
+                },
+            )
 
-        self._graph_store.upsert_relations([relation_node])
-        return relation_node
+            return relation_node
 
-    async def _upsert_claim_node(
+        all_relationships = defaultdict(list)
+        relationships = [
+            relationship
+            for node in nodes
+            for relationship in node.metadata.pop("relationships", [])
+        ]
+        for relationship in relationships:
+            all_relationships[relationship.key].append(relationship)
+
+        tasks = [
+            asyncio.create_task(_transform(key, relationships))
+            for key, relationships in all_relationships.items()
+        ]
+        relation_nodes = []
+        async for task in tqdm_iterable(tasks, "Transforming relations..."):
+            relation_nodes.append(await task)
+
+        self._graph_store.upsert_relations(relation_nodes)
+
+    async def _transform_claim(
         self, parent_node: BaseNode, claim: DummyClaim
-    ) -> ChunkNode:
+    ) -> tuple[ChunkNode, list[Relation]]:
         subject_entities = self._graph_store.get(ids=[claim.subject_key])
 
         object_entities = (
@@ -265,11 +341,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             )
             rel_nodes.append(rel_object)
 
-        self._graph_store.upsert_nodes([chunk_node])
-        if rel_nodes:
-            self._graph_store.upsert_relations(rel_nodes)
-
-        return chunk_node
+        return chunk_node, rel_nodes
 
     def _construct_function(self):
         @ell.complex(**self.config)

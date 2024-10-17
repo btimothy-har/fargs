@@ -8,6 +8,7 @@ from llama_index.core.schema import TransformComponent
 from pydantic import Field
 from retry_async import retry
 
+from fargs.config import default_retry_config
 from fargs.config import default_summarization_llm
 from fargs.exceptions import FargsExtractionError
 from fargs.exceptions import FargsLLMError
@@ -73,9 +74,7 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
     @retry(
         (FargsLLMError),
         is_async=True,
-        tries=3,
-        delay=1,
-        backoff=2,
+        **default_retry_config,
     )
     async def summarize_community(self, node: BaseNode, **kwargs) -> BaseNode:
         raw_text = node.text
