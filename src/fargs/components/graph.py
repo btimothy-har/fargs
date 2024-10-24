@@ -129,7 +129,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                     for entity in entities
                     for attr in entity.attributes
                 },
-                "references_": list(set([entity.origin for entity in entities])),
+                "references_": list(set([entity._origin for entity in entities])),
             }
 
             get_existing_entity = self._graph_store.get(ids=[key])
@@ -232,7 +232,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
                 "strength": sum(relation.strength for relation in relations)
                 / len(relations),
-                "references_": list(set([relation.origin for relation in relations])),
+                "references_": list(set([relation._origin for relation in relations])),
             }
 
             get_existing_relation = self._graph_store.get_triplets(

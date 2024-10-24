@@ -44,7 +44,7 @@ class DummyEntity(BaseModel):
 
 def build_model(entity_types: Enum):
     class Entity(DummyEntity):
-        origin: str = PrivateAttr(default=None)
+        _origin: str = PrivateAttr(default=None)
 
         name: str = Field(
             title="Name",

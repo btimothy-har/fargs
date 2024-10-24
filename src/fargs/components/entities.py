@@ -143,5 +143,5 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
                     ) from e
 
         for e in entities:
-            e.origin = node.metadata.get("doc_id", node.node_id)
+            e._origin = node.metadata.get("doc_id", node.node_id)
         return entities

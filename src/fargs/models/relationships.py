@@ -5,7 +5,7 @@ from pydantic import field_validator
 
 
 class Relationship(BaseModel):
-    origin: str = PrivateAttr(default=None)
+    _origin: str = PrivateAttr(default=None)
 
     source_entity: str = Field(title="Source", description="The source entity.")
     target_entity: str = Field(title="Target", description="The target entity.")
