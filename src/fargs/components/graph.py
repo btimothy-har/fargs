@@ -5,6 +5,7 @@ from typing import Any
 from typing import Literal
 
 import ell
+import tiktoken
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.graph_stores import ChunkNode
 from llama_index.core.graph_stores import EntityNode
@@ -40,6 +41,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
     _graph_store: PropertyGraphStore | None = PrivateAttr(default=None)
     _embeddings: BaseEmbedding | None = PrivateAttr(default=None)
+    _tokenizer: tiktoken.Encoding | None = PrivateAttr(default=None)
     _excluded_embed_metadata_keys: list[str] | None = PrivateAttr(default=None)
     _excluded_llm_metadata_keys: list[str] | None = PrivateAttr(default=None)
 
@@ -55,6 +57,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         super().__init__(**kwargs)
         self._graph_store = graph_store
         self._embeddings = embeddings
+        self._tokenizer = tiktoken.get_encoding("cl100k_base")
         self._excluded_embed_metadata_keys = excluded_embed_metadata_keys
         self._excluded_llm_metadata_keys = excluded_llm_metadata_keys
 
@@ -171,13 +174,13 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            summary = await self.invoke_llm(
-                node_type="entity",
-                title=entity_values["name"],
-                description=entity_values["description"],
-            )
-
-            entity_values["description"] = summary.text
+            if len(self._tokenizer.encode(entity_values["description"])) > 6000:
+                summary = await self.invoke_llm(
+                    node_type="entity",
+                    title=entity_values["name"],
+                    description=entity_values["description"],
+                )
+                entity_values["description"] = summary.text
 
             entity_node = EntityNode(
                 name=entity_values["name"],
@@ -273,17 +276,18 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            summary = await self.invoke_llm(
-                node_type="relation",
-                title=(
-                    f"{relation_values['source_entity']} -> "
-                    f"{relation_values['relation_type']} -> "
-                    f"{relation_values['target_entity']}"
-                ),
-                description=relation_values["description"],
-            )
+            if len(self._tokenizer.encode(relation_values["description"])) > 6000:
+                summary = await self.invoke_llm(
+                    node_type="relation",
+                    title=(
+                        f"{relation_values['source_entity']} -> "
+                        f"{relation_values['relation_type']} -> "
+                        f"{relation_values['target_entity']}"
+                    ),
+                    description=relation_values["description"],
+                )
 
-            relation_values["description"] = summary.text
+                relation_values["description"] = summary.text
 
             relation_node = Relation(
                 label=relation_values["relation_type"],
