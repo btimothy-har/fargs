@@ -1,9 +1,12 @@
 from pydantic import BaseModel
+from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import field_validator
 
 
 class Relationship(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     source_entity: str = Field(title="Source", description="The source entity.")
     target_entity: str = Field(title="Target", description="The target entity.")
 

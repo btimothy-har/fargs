@@ -141,4 +141,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
                     raise FargsExtractionError(
                         f"Failed to parse entities from LLM output: {raw_entities}"
                     ) from e
+
+        for e in entities:
+            e.origin = node.metadata.get("doc_id", node.node_id)
         return entities
