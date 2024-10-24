@@ -292,7 +292,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 properties={
                     "description": relation_values["description"],
                     "strength": relation_values["strength"],
-                    "references_": set(list(relation_values["references_"])),
+                    "references_": list(set(relation_values["references_"])),
                 },
             )
 
