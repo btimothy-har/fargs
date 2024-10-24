@@ -144,4 +144,6 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
                             raise FargsExtractionError(
                                 f"Failed to validate relationship: {e}\n\n{r}"
                             ) from e
+        for r in relationships:
+            r._origin = node.node_id
         return relationships

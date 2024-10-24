@@ -129,6 +129,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                     for entity in entities
                     for attr in entity.attributes
                 },
+                "references_": list(set([entity._origin for entity in entities])),
             }
 
             get_existing_entity = self._graph_store.get(ids=[key])
@@ -153,13 +154,20 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                             {
                                 k: v
                                 for k, v in existing_entity.properties.items()
-                                if k not in ["sources", "description"]
+                                if k not in ["sources", "description", "references_"]
                             }
                             if existing_entity
                             else {}
                         ),
                         **new_entity_values["attributes"],
                     }
+                ),
+                "references_": (
+                    new_entity_values["references_"]
+                    + existing_entity.properties.get("sources", [])
+                    + existing_entity.properties.get("references_", [])
+                    if existing_entity
+                    else new_entity_values["references_"]
                 ),
             }
 
@@ -176,6 +184,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 label=entity_values["entity_type"],
                 properties={
                     "description": entity_values["description"],
+                    "references_": list(set(entity_values["references_"])),
                     **entity_values["attributes"],
                 },
             )
@@ -223,6 +232,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
                 "strength": sum(relation.strength for relation in relations)
                 / len(relations),
+                "references_": list(set([relation._origin for relation in relations])),
             }
 
             get_existing_relation = self._graph_store.get_triplets(
@@ -255,6 +265,12 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                     if existing_relation
                     else new_relation_values["strength"]
                 ),
+                "references_": (
+                    new_relation_values["references_"]
+                    + existing_relation.properties.get("references_", [])
+                    if existing_relation
+                    else new_relation_values["references_"]
+                ),
             }
 
             summary = await self.invoke_llm(
@@ -276,6 +292,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 properties={
                     "description": relation_values["description"],
                     "strength": relation_values["strength"],
+                    "references_": list(set(relation_values["references_"])),
                 },
             )
 
@@ -324,7 +341,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                         "period",
                     }
                 ),
-                "source": parent_node.metadata.get("doc_id", parent_node.node_id),
+                "source": parent_node.node_id,
                 "references": "; ".join(claim.sources),
             },
         )

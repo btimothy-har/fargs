@@ -166,4 +166,5 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
                     raise FargsExtractionError(
                         f"Failed to parse claims from LLM output: {raw_claims}"
                     ) from e
+
         return claims
