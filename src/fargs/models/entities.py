@@ -1,8 +1,8 @@
 from enum import Enum
 
 from pydantic import BaseModel
-from pydantic import ConfigDict
 from pydantic import Field
+from pydantic import PrivateAttr
 from pydantic import field_validator
 
 
@@ -44,7 +44,7 @@ class DummyEntity(BaseModel):
 
 def build_model(entity_types: Enum):
     class Entity(DummyEntity):
-        model_config = ConfigDict(extra="allow")
+        origin: str = PrivateAttr(default=None)
 
         name: str = Field(
             title="Name",
