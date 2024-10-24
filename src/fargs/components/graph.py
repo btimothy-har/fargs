@@ -341,7 +341,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                         "period",
                     }
                 ),
-                "source": parent_node.metadata.get("doc_id", parent_node.node_id),
+                "source": parent_node.node_id,
                 "references": "; ".join(claim.sources),
             },
         )
