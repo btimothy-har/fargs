@@ -70,11 +70,10 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         await self._transform_entities(nodes)
         await self._transform_relations(nodes)
 
-        tasks = [asyncio.create_task(self._transform_node(node)) for node in nodes]
-
         transformed = []
-        async for task in tqdm_iterable(tasks, "Transforming nodes..."):
-            transformed.append(await task)
+        async for n in tqdm_iterable(nodes, "Transforming nodes..."):
+            transformed_node = await self._transform_node(n)
+            transformed.append(transformed_node)
 
         return transformed
 
@@ -91,15 +90,69 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             raise FargsLLMError(f"Failed to embed node: {e}") from e
 
     async def _transform_node(self, node: BaseNode, **kwargs) -> BaseNode:
+        async def _transform_claim(
+            parent_node: BaseNode, claim: DummyClaim
+        ) -> tuple[ChunkNode, list[Relation]]:
+            subject_entities = self._graph_store.get(ids=[claim.subject_key])
+
+            object_entities = (
+                self._graph_store.get(ids=[claim.object_key])
+                if claim.object_key
+                else []
+            )
+
+            chunk_node = ChunkNode(
+                text=str(claim),
+                id_=claim.key,
+                label="claim",
+                properties={
+                    **claim.model_dump(
+                        include={
+                            "title",
+                            "subject",
+                            "object",
+                            "claim_type",
+                            "status",
+                            "period",
+                        }
+                    ),
+                    "source": parent_node.node_id,
+                    "references": "; ".join(claim.sources),
+                },
+            )
+
+            if self._graph_store.supports_vector_queries:
+                chunk_node.properties["embedding"] = await self._embed_node(
+                    str(chunk_node)
+                )
+
+            rel_nodes = []
+
+            if subject_entities:
+                rel_subject = Relation(
+                    label="subject_of",
+                    source_id=chunk_node.id,
+                    target_id=subject_entities[0].id,
+                )
+                rel_nodes.append(rel_subject)
+
+            if object_entities:
+                rel_object = Relation(
+                    label="object_of",
+                    source_id=chunk_node.id,
+                    target_id=object_entities[0].id,
+                )
+                rel_nodes.append(rel_object)
+
+            return chunk_node, rel_nodes
+
         node.metadata.pop("entities", None)
         node.metadata.pop("relationships", None)
 
         claims = node.metadata.pop("claims", None)
 
         if claims:
-            tasks = [
-                asyncio.create_task(self._transform_claim(node, c)) for c in claims
-            ]
+            tasks = [asyncio.create_task(_transform_claim(node, c)) for c in claims]
 
             chunk_nodes = []
             rel_nodes = []
@@ -193,9 +246,9 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             )
 
             if self._graph_store.supports_vector_queries:
-                entity_node.properties[
-                    "embedding"
-                ] = await self._embeddings.aget_text_embedding(str(entity_node))
+                entity_node.properties["embedding"] = await self._embed_node(
+                    str(entity_node)
+                )
 
             return entity_node
 
@@ -320,60 +373,6 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             relation_nodes.append(await task)
 
         self._graph_store.upsert_relations(relation_nodes)
-
-    async def _transform_claim(
-        self, parent_node: BaseNode, claim: DummyClaim
-    ) -> tuple[ChunkNode, list[Relation]]:
-        subject_entities = self._graph_store.get(ids=[claim.subject_key])
-
-        object_entities = (
-            self._graph_store.get(ids=[claim.object_key]) if claim.object_key else []
-        )
-
-        chunk_node = ChunkNode(
-            text=str(claim),
-            id_=claim.key,
-            label="claim",
-            properties={
-                **claim.model_dump(
-                    include={
-                        "title",
-                        "subject",
-                        "object",
-                        "claim_type",
-                        "status",
-                        "period",
-                    }
-                ),
-                "source": parent_node.node_id,
-                "references": "; ".join(claim.sources),
-            },
-        )
-
-        if self._graph_store.supports_vector_queries:
-            chunk_node.properties[
-                "embedding"
-            ] = await self._embeddings.aget_text_embedding(str(chunk_node))
-
-        rel_nodes = []
-
-        if subject_entities:
-            rel_subject = Relation(
-                label="subject_of",
-                source_id=chunk_node.id,
-                target_id=subject_entities[0].id,
-            )
-            rel_nodes.append(rel_subject)
-
-        if object_entities:
-            rel_object = Relation(
-                label="object_of",
-                source_id=chunk_node.id,
-                target_id=object_entities[0].id,
-            )
-            rel_nodes.append(rel_object)
-
-        return chunk_node, rel_nodes
 
     def _construct_function(self):
         @ell.complex(**self.config)
