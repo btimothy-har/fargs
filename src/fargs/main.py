@@ -344,7 +344,7 @@ class Fargs:
                 metadata={
                     "community_id": community_id,
                     "entities": entities,
-                    "sources": source_docs,
+                    "sources": list(set(source_docs)),
                 },
             )
 
