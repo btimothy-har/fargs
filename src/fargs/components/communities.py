@@ -98,7 +98,11 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
         node.metadata["impact_severity_rating"] = result.impact_severity_rating
         node.metadata["rating_explanation"] = result.rating_explanation
 
-        node.excluded_embed_metadata_keys = ["entities", "impact_severity_rating"]
-        node.excluded_llm_metadata_keys = ["entities"]
+        node.excluded_embed_metadata_keys = [
+            "entities",
+            "impact_severity_rating",
+            "sources",
+        ]
+        node.excluded_llm_metadata_keys = ["entities", "sources"]
 
         return node

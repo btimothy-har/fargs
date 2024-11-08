@@ -311,8 +311,8 @@ class Fargs:
                             f"{node} -> {edge_data['relationship']} -> {neighbor}"
                         ),
                         "description": edge_data["description"],
-                        "source": node,
-                        "target": neighbor,
+                        "_source": node,
+                        "_target": neighbor,
                     }
                     community_info[cluster_id].append(detail)
 
@@ -330,15 +330,21 @@ class Fargs:
                 }
                 for d in details
             ]
-            sources = set(d["source"] for d in details)
-            targets = set(d["target"] for d in details)
-            entities = list(sources.union(targets))
+            sources = set(d["_source"] for d in details)
+            targets = set(d["_target"] for d in details)
+            entities = sorted(list(set(sources.union(targets))))
+
+            raw_entities = self.graph_store.get(ids=entities)
+            source_docs = sum(
+                (e.properties.get("references_", []) for e in raw_entities), []
+            )
 
             communities[community_id] = Document(
                 text="\n".join([json.dumps(d) for d in detail_data]),
                 metadata={
                     "community_id": community_id,
                     "entities": entities,
+                    "sources": list(set(source_docs)),
                 },
             )
 
