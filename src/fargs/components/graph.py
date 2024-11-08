@@ -164,6 +164,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             self._graph_store.upsert_nodes(chunk_nodes)
             self._graph_store.upsert_relations(rel_nodes)
 
+        node.metadata["chunk_id"] = node.node_id
+
         node.excluded_embed_metadata_keys = self._excluded_embed_metadata_keys
         node.excluded_llm_metadata_keys = self._excluded_llm_metadata_keys
         return node
