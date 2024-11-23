@@ -57,6 +57,6 @@ def sequential_task(concurrent_tasks: int = 1):
     return decorator
 
 
-async def tqdm_iterable(iterable, desc: str):
-    async for item in tqdm_asyncio(iterable, desc=desc):
+async def tqdm_iterable(iterable, desc: str, **kwargs):
+    async for item in tqdm_asyncio(iterable, desc=desc, **kwargs):
         yield item
