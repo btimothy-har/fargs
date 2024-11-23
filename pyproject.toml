@@ -1,6 +1,6 @@
 [project]
 name = "fargs"
-version = "0.0.1.dev4"
+version = "0.0.1.dev5"
 description = "Frankly, Another RAG with Graphs and... Stuff"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -8,11 +8,11 @@ dependencies = [
     "pydantic~=2.9.2",
     "torch~=2.4.1",
     "ell-ai[all]>=0.0.14",
-    "llama-index-core~=0.11.14",
-    "llama-index-storage-docstore-postgres==0.2.0",
-    "llama-index-vector-stores-postgres==0.2.6",
-    "llama-index-graph-stores-neo4j==0.3.3",
-    "llama-index-embeddings-openai==0.2.5",
+    "llama-index-core~=0.12.1",
+    "llama-index-storage-docstore-postgres~=0.3.0",
+    "llama-index-vector-stores-postgres~=0.3.0",
+    "llama-index-graph-stores-neo4j~=0.4.0",
+    "llama-index-embeddings-openai~=0.3.0",
     "aiolimiter~=1.1.0",
     "requests~=2.32",
     "aiohttp~=3.10.5",
