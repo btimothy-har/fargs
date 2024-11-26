@@ -206,20 +206,18 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                     if existing_entity
                     else new_entity_values["description"]
                 ),
-                "attributes": (
-                    {
-                        **(
-                            {
-                                k: v
-                                for k, v in existing_entity.properties.items()
-                                if k not in ["sources", "description", "references_"]
-                            }
-                            if existing_entity
-                            else {}
-                        ),
-                        **new_entity_values["attributes"],
-                    }
-                ),
+                "attributes": ({
+                    **(
+                        {
+                            k: v
+                            for k, v in existing_entity.properties.items()
+                            if k not in ["sources", "description", "references_"]
+                        }
+                        if existing_entity
+                        else {}
+                    ),
+                    **new_entity_values["attributes"],
+                }),
                 "references_": (
                     new_entity_values["references_"]
                     + existing_entity.properties.get("sources", [])
@@ -263,13 +261,12 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         for entity in entities:
             all_entities[entity.key].append(entity)
 
-        tasks = [
-            asyncio.create_task(_transform(key, entities))
-            for key, entities in all_entities.items()
-        ]
         entity_nodes = []
-        async for task in tqdm_iterable(tasks, "Transforming entities..."):
-            entity_nodes.append(await task)
+        async for key, entities in tqdm_iterable(
+            all_entities.items(), "Transforming entities..."
+        ):
+            transformed = await _transform(key, entities)
+            entity_nodes.append(transformed)
 
         self._graph_store.upsert_nodes(entity_nodes)
 
@@ -366,13 +363,12 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         for relationship in relationships:
             all_relationships[relationship.key].append(relationship)
 
-        tasks = [
-            asyncio.create_task(_transform(key, relationships))
-            for key, relationships in all_relationships.items()
-        ]
         relation_nodes = []
-        async for task in tqdm_iterable(tasks, "Transforming relations..."):
-            relation_nodes.append(await task)
+        async for key, relationships in tqdm_iterable(
+            all_relationships.items(), "Transforming relations..."
+        ):
+            transformed = await _transform(key, relationships)
+            relation_nodes.append(transformed)
 
         self._graph_store.upsert_relations(relation_nodes)
 
