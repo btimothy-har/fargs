@@ -9,12 +9,14 @@ from pydantic import Field
 from pydantic import PrivateAttr
 from retry_async import retry
 
+from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import default_extraction_llm
 from fargs.config import default_retry_config
 from fargs.exceptions import FargsExtractionError
 from fargs.exceptions import FargsLLMError
 from fargs.models import Relationship
 from fargs.prompts import EXTRACT_RELATIONSHIPS_PROMPT
+from fargs.utils import async_batch
 from fargs.utils import tqdm_iterable
 
 from .base import LLMPipelineComponent
@@ -82,17 +84,25 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
         return extract_relationships
 
     async def aextract(self, nodes):
+        batch_count = 0
+        total_batches = (len(nodes) // PROCESSING_BATCH_SIZE) + 1
         relationships = []
 
-        tasks = [
-            asyncio.create_task(self.invoke_and_parse_results(node)) for node in nodes
-        ]
-        async for task in tqdm_iterable(tasks, "Extracting relationships"):
-            try:
-                raw_results = await task
-                relationships.append({"relationships": raw_results})
-            except Exception:
-                relationships.append({"relationships": None})
+        async for batch in async_batch(nodes, batch_size=PROCESSING_BATCH_SIZE):
+            batch_count += 1
+            tasks = [
+                asyncio.create_task(self.invoke_and_parse_results(node))
+                for node in batch
+            ]
+            async for task in tqdm_iterable(
+                tasks,
+                f"Batch {batch_count}/{total_batches}: Extracting relationships...",
+            ):
+                try:
+                    raw_results = await task
+                    relationships.append({"relationships": raw_results})
+                except Exception:
+                    relationships.append({"relationships": None})
 
         return relationships
 
@@ -106,18 +116,16 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
             return None
 
         relationships = []
-        entities_json = "\n".join(
-            [
-                m.model_dump_json(
-                    include={
-                        "name",
-                        "entity_type",
-                        "description",
-                    }
-                )
-                for m in node.metadata["entities"]
-            ]
-        )
+        entities_json = "\n".join([
+            m.model_dump_json(
+                include={
+                    "name",
+                    "entity_type",
+                    "description",
+                }
+            )
+            for m in node.metadata["entities"]
+        ])
 
         raw_result = await self.invoke_llm(
             entities_json=entities_json,

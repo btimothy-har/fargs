@@ -9,6 +9,8 @@ from pydantic import BaseModel
 
 SUMMARY_CONTEXT_WINDOW = 100_000
 
+PROCESSING_BATCH_SIZE = int(os.getenv("FARGS_BATCH_SIZE", "100"))
+
 
 class FargsPrompts(BaseModel):
     claims: str = None

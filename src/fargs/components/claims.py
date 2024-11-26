@@ -12,6 +12,7 @@ from pydantic import Field
 from pydantic import PrivateAttr
 from retry_async import retry
 
+from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import default_extraction_llm
 from fargs.config import default_retry_config
 from fargs.exceptions import FargsExtractionError
@@ -19,6 +20,7 @@ from fargs.exceptions import FargsLLMError
 from fargs.models import DefaultClaimTypes
 from fargs.models import build_claim_model
 from fargs.prompts import EXTRACT_CLAIMS_PROMPT
+from fargs.utils import async_batch
 from fargs.utils import tqdm_iterable
 
 from .base import LLMPipelineComponent
@@ -99,17 +101,25 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
         return extract_claims
 
     async def aextract(self, nodes):
+        batch_count = 0
+        total_batches = (len(nodes) // PROCESSING_BATCH_SIZE) + 1
         claims = []
 
-        tasks = [
-            asyncio.create_task(self.invoke_and_parse_results(node)) for node in nodes
-        ]
-        async for task in tqdm_iterable(tasks, "Extracting claims"):
-            try:
-                raw_results = await task
-                claims.append({"claims": raw_results})
-            except Exception:
-                claims.append({"claims": None})
+        async for batch in async_batch(nodes, batch_size=PROCESSING_BATCH_SIZE):
+            batch_count += 1
+            tasks = [
+                asyncio.create_task(self.invoke_and_parse_results(node))
+                for node in batch
+            ]
+            async for task in tqdm_iterable(
+                tasks,
+                f"Batch {batch_count}/{total_batches}: Extracting claims...",
+            ):
+                try:
+                    raw_results = await task
+                    claims.append({"claims": raw_results})
+                except Exception:
+                    claims.append({"claims": None})
 
         return claims
 
@@ -123,18 +133,16 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
             return None
 
         claims = []
-        entities_json = "\n".join(
-            [
-                m.model_dump_json(
-                    include={
-                        "name",
-                        "entity_type",
-                        "description",
-                    }
-                )
-                for m in node.metadata["entities"]
-            ]
-        )
+        entities_json = "\n".join([
+            m.model_dump_json(
+                include={
+                    "name",
+                    "entity_type",
+                    "description",
+                }
+            )
+            for m in node.metadata["entities"]
+        ])
 
         raw_result = await self.invoke_llm(
             entities_json=entities_json,

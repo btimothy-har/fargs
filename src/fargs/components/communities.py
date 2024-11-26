@@ -8,12 +8,14 @@ from llama_index.core.schema import TransformComponent
 from pydantic import Field
 from retry_async import retry
 
+from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import default_retry_config
 from fargs.config import default_summarization_llm
 from fargs.exceptions import FargsExtractionError
 from fargs.exceptions import FargsLLMError
 from fargs.models import CommunityReport
 from fargs.prompts import COMMUNITY_REPORT
+from fargs.utils import async_batch
 from fargs.utils import tqdm_iterable
 
 from .base import LLMPipelineComponent
@@ -55,19 +57,27 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
         asyncio.run(self.acall(nodes, **kwargs))
 
     async def acall(self, nodes: list[BaseNode], **kwargs) -> list[BaseNode]:
-        tasks = [
-            asyncio.create_task(self.summarize_community(node, **kwargs))
-            for node in nodes
-        ]
-
+        batch_count = 0
+        total_batches = (len(nodes) // PROCESSING_BATCH_SIZE) + 1
         transformed = []
-        async for task in tqdm_iterable(tasks, "Summarizing communities..."):
-            try:
-                result = await task
-                transformed.append(result)
-            except Exception as e:
-                print(e)
-                continue
+
+        async for batch in async_batch(nodes, batch_size=PROCESSING_BATCH_SIZE):
+            batch_count += 1
+            tasks = [
+                asyncio.create_task(self.summarize_community(node, **kwargs))
+                for node in batch
+            ]
+
+            async for task in tqdm_iterable(
+                tasks,
+                f"Batch {batch_count}/{total_batches}: Summarizing communities...",
+            ):
+                try:
+                    result = await task
+                    transformed.append(result)
+                except Exception as e:
+                    print(e)
+                    continue
 
         return transformed
 

@@ -60,3 +60,18 @@ def sequential_task(concurrent_tasks: int = 1):
 async def tqdm_iterable(iterable, desc: str, **kwargs):
     async for item in tqdm_asyncio(iterable, desc=desc, **kwargs):
         yield item
+
+
+async def async_batch(items, batch_size: int):
+    """
+    Yield items in batches for async processing.
+
+    Args:
+        items: Iterable of items to process
+        batch_size: Size of each batch
+
+    Yields:
+        List of items in the current batch
+    """
+    for i in range(0, len(items), batch_size):
+        yield items[i : i + batch_size]
