@@ -17,6 +17,7 @@ from pydantic import Field
 from pydantic import PrivateAttr
 from retry_async import retry
 
+from fargs.config import SUMMARY_CONTEXT_WINDOW
 from fargs.config import default_extraction_llm
 from fargs.config import default_retry_config
 from fargs.exceptions import FargsLLMError
@@ -227,11 +228,17 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            if len(self._tokenizer.encode(entity_values["description"])) > 6000:
+            desc_encoded = self._tokenizer.encode(entity_values["description"])
+            if len(desc_encoded) > 6000:
+                desc = (
+                    self._tokenizer.decode(desc_encoded[:SUMMARY_CONTEXT_WINDOW])
+                    if len(desc_encoded) > SUMMARY_CONTEXT_WINDOW
+                    else entity_values["description"]
+                )
                 summary = await self.invoke_llm(
                     node_type="entity",
                     title=entity_values["name"],
-                    description=entity_values["description"],
+                    description=desc,
                 )
                 entity_values["description"] = summary.text
 
@@ -328,7 +335,13 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            if len(self._tokenizer.encode(relation_values["description"])) > 6000:
+            desc_encoded = self._tokenizer.encode(relation_values["description"])
+            if len(desc_encoded) > 6000:
+                desc = (
+                    self._tokenizer.decode(desc_encoded[:SUMMARY_CONTEXT_WINDOW])
+                    if len(desc_encoded) > SUMMARY_CONTEXT_WINDOW
+                    else relation_values["description"]
+                )
                 summary = await self.invoke_llm(
                     node_type="relation",
                     title=(
@@ -336,7 +349,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                         f"{relation_values['relation_type']} -> "
                         f"{relation_values['target_entity']}"
                     ),
-                    description=relation_values["description"],
+                    description=desc,
                 )
 
                 relation_values["description"] = summary.text

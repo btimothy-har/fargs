@@ -7,6 +7,8 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.embeddings.openai import OpenAIEmbeddingMode
 from pydantic import BaseModel
 
+SUMMARY_CONTEXT_WINDOW = 100_000
+
 
 class FargsPrompts(BaseModel):
     claims: str = None
