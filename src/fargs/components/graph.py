@@ -94,10 +94,12 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         async def _transform_claim(
             parent_node: BaseNode, claim: DummyClaim
         ) -> tuple[ChunkNode, list[Relation]]:
-            subject_entities = await self._graph_store.aget(ids=[claim.subject_key])
+            subject_entities = await asyncio.to_thread(
+                self._graph_store.get, ids=[claim.subject_key]
+            )
 
             object_entities = (
-                await self._graph_store.aget(ids=[claim.object_key])
+                await asyncio.to_thread(self._graph_store.get, ids=[claim.object_key])
                 if claim.object_key
                 else []
             )
@@ -162,8 +164,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 chunk_nodes.append(chunk_node)
                 rel_nodes.extend(rel_nodes)
 
-            await self._graph_store.aupsert_nodes(chunk_nodes)
-            await self._graph_store.aupsert_relations(rel_nodes)
+            await asyncio.to_thread(self._graph_store.upsert_nodes, chunk_nodes)
+            await asyncio.to_thread(self._graph_store.upsert_relations, rel_nodes)
 
         node.metadata["chunk_id"] = node.node_id
 
@@ -191,7 +193,9 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 "references_": list(set([entity._origin for entity in entities])),
             }
 
-            get_existing_entity = await self._graph_store.aget(ids=[key])
+            get_existing_entity = await asyncio.to_thread(
+                self._graph_store.get, ids=[key]
+            )
 
             existing_entity = get_existing_entity[0] if get_existing_entity else None
 
@@ -275,7 +279,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             transformed = await _transform(key, entities)
             entity_nodes.append(transformed)
 
-        await self._graph_store.aupsert_nodes(entity_nodes)
+        await asyncio.to_thread(self._graph_store.upsert_nodes, entity_nodes)
 
     async def _transform_relations(self, nodes: list[BaseNode]):
         @retry(
@@ -297,8 +301,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 "references_": list(set([relation._origin for relation in relations])),
             }
 
-            get_existing_relation = await self._graph_store.aget_triplets(
-                ids=[key],
+            get_existing_relation = await asyncio.to_thread(
+                self._graph_store.get_triplets, ids=[key]
             )
 
             existing_relation = (
@@ -383,7 +387,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             transformed = await _transform(key, relationships)
             relation_nodes.append(transformed)
 
-        await self._graph_store.aupsert_relations(relation_nodes)
+        await asyncio.to_thread(self._graph_store.upsert_relations, relation_nodes)
 
     def _construct_function(self):
         @ell.complex(**self.config)
