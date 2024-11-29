@@ -16,7 +16,6 @@ from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import default_extraction_llm
 from fargs.config import default_retry_config
 from fargs.exceptions import FargsExtractionError
-from fargs.exceptions import FargsLLMError
 from fargs.models import DefaultClaimTypes
 from fargs.models import build_claim_model
 from fargs.prompts import EXTRACT_CLAIMS_PROMPT
@@ -124,7 +123,7 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
         return claims
 
     @retry(
-        (FargsLLMError, FargsExtractionError),
+        (FargsExtractionError),
         is_async=True,
         **default_retry_config,
     )

@@ -16,7 +16,6 @@ from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import default_extraction_llm
 from fargs.config import default_retry_config
 from fargs.exceptions import FargsExtractionError
-from fargs.exceptions import FargsLLMError
 from fargs.models import DefaultEntityTypes
 from fargs.models import build_entity_model
 from fargs.prompts import EXTRACT_ENTITIES_PROMPT
@@ -112,7 +111,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
         return entities
 
     @retry(
-        (FargsExtractionError, FargsLLMError),
+        (FargsExtractionError),
         is_async=True,
         **default_retry_config,
     )
