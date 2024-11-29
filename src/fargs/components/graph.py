@@ -83,7 +83,10 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         is_async=True,
         **default_retry_config,
     )
-    @token_limited_task(max_tokens=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000))
+    @token_limited_task(
+        encoder_model="cl100k_base",
+        max_tokens=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000),
+    )
     async def _embed_node(self, node: Any):
         try:
             return await self._embeddings.aget_text_embedding(str(node))
@@ -92,18 +95,11 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
     async def _transform_node(self, node: BaseNode, **kwargs) -> BaseNode:
         async def _transform_claim(
-            parent_node: BaseNode, claim: DummyClaim
+            parent_node: BaseNode,
+            claim: DummyClaim,
+            subject_entity: EntityNode | None,
+            object_entity: EntityNode | None,
         ) -> tuple[ChunkNode, list[Relation]]:
-            subject_entities = await asyncio.to_thread(
-                self._graph_store.get, ids=[claim.subject_key]
-            )
-
-            object_entities = (
-                await asyncio.to_thread(self._graph_store.get, ids=[claim.object_key])
-                if claim.object_key
-                else []
-            )
-
             chunk_node = ChunkNode(
                 text=str(claim),
                 id_=claim.key,
@@ -131,19 +127,19 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
             rel_nodes = []
 
-            if subject_entities:
+            if subject_entity:
                 rel_subject = Relation(
                     label="subject_of",
                     source_id=chunk_node.id,
-                    target_id=subject_entities[0].id,
+                    target_id=subject_entity.id,
                 )
                 rel_nodes.append(rel_subject)
 
-            if object_entities:
+            if object_entity:
                 rel_object = Relation(
                     label="object_of",
                     source_id=chunk_node.id,
-                    target_id=object_entities[0].id,
+                    target_id=object_entity.id,
                 )
                 rel_nodes.append(rel_object)
 
@@ -155,12 +151,35 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         claims = node.metadata.pop("claims", None)
 
         if claims:
+            subject_entities: list[EntityNode] = await asyncio.to_thread(
+                self._graph_store.get, ids=[c.subject_key for c in claims]
+            )
+            subject_entities_dict = {e.id: e for e in subject_entities}
+            object_entities: list[EntityNode] = await asyncio.to_thread(
+                self._graph_store.get,
+                ids=[c.object_key for c in claims if c.object_key],
+            )
+            object_entities_dict = {e.id: e for e in object_entities}
+
+            tasks = [
+                asyncio.create_task(
+                    _transform_claim(
+                        parent_node=node,
+                        claim=c,
+                        subject_entity=subject_entities_dict.get(c.subject_key),
+                        object_entity=object_entities_dict.get(c.object_key),
+                    )
+                )
+                for c in claims
+            ]
+
             chunk_nodes = []
             rel_nodes = []
-            async for c in tqdm_iterable(
-                claims, "Transforming claims...", disable=True
+
+            async for task in tqdm_iterable(
+                asyncio.as_completed(tasks), "Transforming claims...", disable=True
             ):
-                chunk_node, rel_nodes = await _transform_claim(node, c)
+                chunk_node, rel_nodes = await task
                 chunk_nodes.append(chunk_node)
                 rel_nodes.extend(rel_nodes)
 
@@ -174,12 +193,11 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         return node
 
     async def _transform_entities(self, nodes: list[BaseNode]):
-        @retry(
-            (FargsLLMError),
-            is_async=True,
-            **default_retry_config,
-        )
-        async def _transform(key: str, entities: list[DummyEntity]) -> EntityNode:
+        async def _transform(
+            key: str,
+            entities: list[DummyEntity],
+            existing_entity: EntityNode | None = None,
+        ) -> EntityNode:
             new_entity_values = {
                 "id": key,
                 "name": entities[0].name,
@@ -192,12 +210,6 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 },
                 "references_": list(set([entity._origin for entity in entities])),
             }
-
-            get_existing_entity = await asyncio.to_thread(
-                self._graph_store.get, ids=[key]
-            )
-
-            existing_entity = get_existing_entity[0] if get_existing_entity else None
 
             entity_values = {
                 "id": key,
@@ -232,19 +244,29 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            desc_encoded = self._tokenizer.encode(entity_values["description"])
+            desc_encoded = await asyncio.to_thread(
+                self._tokenizer.encode, entity_values["description"]
+            )
             if len(desc_encoded) > 6000:
                 desc = (
-                    self._tokenizer.decode(desc_encoded[:SUMMARY_CONTEXT_WINDOW])
+                    await asyncio.to_thread(
+                        self._tokenizer.decode, desc_encoded[:SUMMARY_CONTEXT_WINDOW]
+                    )
                     if len(desc_encoded) > SUMMARY_CONTEXT_WINDOW
                     else entity_values["description"]
                 )
-                summary = await self.invoke_llm(
-                    node_type="entity",
-                    title=entity_values["name"],
-                    description=desc,
-                )
-                entity_values["description"] = summary.text
+                try:
+                    summary = await self.invoke_llm(
+                        node_type="entity",
+                        title=entity_values["name"],
+                        description=desc,
+                    )
+                except FargsLLMError:
+                    entity_values["description"] = await asyncio.to_thread(
+                        self._tokenizer.decode, desc_encoded[:6000]
+                    )
+                else:
+                    entity_values["description"] = summary.text
 
             entity_node = EntityNode(
                 name=entity_values["name"],
@@ -264,7 +286,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             return entity_node
 
         all_entities = defaultdict(list)
-        entities = [
+        entities: list[DummyEntity] = [
             entity
             for node in nodes
             for entity in node.metadata.pop("entities", []) or []
@@ -272,22 +294,36 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         for entity in entities:
             all_entities[entity.key].append(entity)
 
-        entity_nodes = []
-        async for key, entities in tqdm_iterable(
-            all_entities.items(), "Transforming entities..."
-        ):
-            transformed = await _transform(key, entities)
-            entity_nodes.append(transformed)
+        existing_entities: list[EntityNode] = await asyncio.to_thread(
+            self._graph_store.get, ids=list(all_entities.keys())
+        )
+        if existing_entities:
+            existing_entities_dict = {e.id: e for e in existing_entities}
+        else:
+            existing_entities_dict = {}
 
-        await asyncio.to_thread(self._graph_store.upsert_nodes, entity_nodes)
+        entities = []
+        tasks = [
+            asyncio.create_task(
+                _transform(key, entities, existing_entities_dict.get(key))
+            )
+            for key, entities in all_entities.items()
+        ]
+
+        async for task in tqdm_iterable(
+            asyncio.as_completed(tasks), "Transforming entities..."
+        ):
+            transformed = await task
+            entities.append(transformed)
+
+        await asyncio.to_thread(self._graph_store.upsert_nodes, entities)
 
     async def _transform_relations(self, nodes: list[BaseNode]):
-        @retry(
-            (FargsLLMError),
-            is_async=True,
-            **default_retry_config,
-        )
-        async def _transform(key: str, relations: list[Relationship]) -> Relation:
+        async def _transform(
+            key: str,
+            relations: list[Relationship],
+            existing_relation: Relation | None = None,
+        ) -> Relation:
             new_relation_values = {
                 "id": key,
                 "source_entity": relations[0].source_entity,
@@ -300,14 +336,6 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 / len(relations),
                 "references_": list(set([relation._origin for relation in relations])),
             }
-
-            get_existing_relation = await asyncio.to_thread(
-                self._graph_store.get_triplets, ids=[key]
-            )
-
-            existing_relation = (
-                get_existing_relation[0] if get_existing_relation else None
-            )
 
             relation_values = {
                 "id": key,
@@ -339,24 +367,33 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ),
             }
 
-            desc_encoded = self._tokenizer.encode(relation_values["description"])
+            desc_encoded = await asyncio.to_thread(
+                self._tokenizer.encode, relation_values["description"]
+            )
             if len(desc_encoded) > 6000:
                 desc = (
-                    self._tokenizer.decode(desc_encoded[:SUMMARY_CONTEXT_WINDOW])
+                    await asyncio.to_thread(
+                        self._tokenizer.decode, desc_encoded[:SUMMARY_CONTEXT_WINDOW]
+                    )
                     if len(desc_encoded) > SUMMARY_CONTEXT_WINDOW
                     else relation_values["description"]
                 )
-                summary = await self.invoke_llm(
-                    node_type="relation",
-                    title=(
-                        f"{relation_values['source_entity']} -> "
-                        f"{relation_values['relation_type']} -> "
-                        f"{relation_values['target_entity']}"
-                    ),
-                    description=desc,
-                )
-
-                relation_values["description"] = summary.text
+                try:
+                    summary = await self.invoke_llm(
+                        node_type="relation",
+                        title=(
+                            f"{relation_values['source_entity']} -> "
+                            f"{relation_values['relation_type']} -> "
+                            f"{relation_values['target_entity']}"
+                        ),
+                        description=desc,
+                    )
+                except FargsLLMError:
+                    relation_values["description"] = await asyncio.to_thread(
+                        self._tokenizer.decode, desc_encoded[:6000]
+                    )
+                else:
+                    relation_values["description"] = summary.text
 
             relation_node = Relation(
                 label=relation_values["relation_type"],
@@ -380,14 +417,29 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         for relationship in relationships:
             all_relationships[relationship.key].append(relationship)
 
-        relation_nodes = []
-        async for key, relationships in tqdm_iterable(
-            all_relationships.items(), "Transforming relations..."
-        ):
-            transformed = await _transform(key, relationships)
-            relation_nodes.append(transformed)
+        existing_relationships: list[Relation] = await asyncio.to_thread(
+            self._graph_store.get_triplets, ids=list(all_relationships.keys())
+        )
+        if existing_relationships:
+            existing_relationships_dict = {r.id: r for r in existing_relationships}
+        else:
+            existing_relationships_dict = {}
 
-        await asyncio.to_thread(self._graph_store.upsert_relations, relation_nodes)
+        relations = []
+        tasks = [
+            asyncio.create_task(
+                _transform(key, relationships, existing_relationships_dict.get(key))
+            )
+            for key, relationships in all_relationships.items()
+        ]
+
+        async for task in tqdm_iterable(
+            asyncio.as_completed(tasks), "Transforming relations..."
+        ):
+            transformed = await task
+            relations.append(transformed)
+
+        await asyncio.to_thread(self._graph_store.upsert_relations, relations)
 
     def _construct_function(self):
         @ell.complex(**self.config)
