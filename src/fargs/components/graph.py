@@ -17,6 +17,7 @@ from pydantic import Field
 from pydantic import PrivateAttr
 from retry_async import retry
 
+from fargs.config import EMBEDDING_CONTEXT_LENGTH
 from fargs.config import SUMMARY_CONTEXT_WINDOW
 from fargs.config import default_extraction_llm
 from fargs.config import default_retry_config
@@ -121,9 +122,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             )
 
             if self._graph_store.supports_vector_queries:
-                chunk_node.properties["embedding"] = await self._embed_node(
-                    str(chunk_node)
-                )
+                chunk_node.properties["embedding"] = await self._embed_node(str(claim))
 
             rel_nodes = []
 
@@ -247,7 +246,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             desc_encoded = await asyncio.to_thread(
                 self._tokenizer.encode, entity_values["description"]
             )
-            if len(desc_encoded) > 6000:
+            if len(desc_encoded) > EMBEDDING_CONTEXT_LENGTH:
                 desc = (
                     await asyncio.to_thread(
                         self._tokenizer.decode, desc_encoded[:SUMMARY_CONTEXT_WINDOW]
@@ -263,7 +262,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                     )
                 except FargsLLMError:
                     entity_values["description"] = await asyncio.to_thread(
-                        self._tokenizer.decode, desc_encoded[:6000]
+                        self._tokenizer.decode, desc_encoded[:EMBEDDING_CONTEXT_LENGTH]
                     )
                 else:
                     entity_values["description"] = summary.text
@@ -280,7 +279,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
             if self._graph_store.supports_vector_queries:
                 entity_node.properties["embedding"] = await self._embed_node(
-                    str(entity_node)
+                    f"{entity_values['entity_type']}: {entity_values['name']} "
+                    f"{entity_values['description']}"
                 )
 
             return entity_node
@@ -370,7 +370,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             desc_encoded = await asyncio.to_thread(
                 self._tokenizer.encode, relation_values["description"]
             )
-            if len(desc_encoded) > 6000:
+            if len(desc_encoded) > EMBEDDING_CONTEXT_LENGTH:
                 desc = (
                     await asyncio.to_thread(
                         self._tokenizer.decode, desc_encoded[:SUMMARY_CONTEXT_WINDOW]
@@ -390,7 +390,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                     )
                 except FargsLLMError:
                     relation_values["description"] = await asyncio.to_thread(
-                        self._tokenizer.decode, desc_encoded[:6000]
+                        self._tokenizer.decode, desc_encoded[:EMBEDDING_CONTEXT_LENGTH]
                     )
                 else:
                     relation_values["description"] = summary.text

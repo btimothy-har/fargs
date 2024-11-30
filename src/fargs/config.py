@@ -7,6 +7,7 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.embeddings.openai import OpenAIEmbeddingMode
 from pydantic import BaseModel
 
+EMBEDDING_CONTEXT_LENGTH = 6_000
 SUMMARY_CONTEXT_WINDOW = 100_000
 
 PROCESSING_BATCH_SIZE = int(os.getenv("FARGS_BATCH_SIZE", "100"))
