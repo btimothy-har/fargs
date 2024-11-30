@@ -74,10 +74,20 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         await self._transform_entities(nodes)
         await self._transform_relations(nodes)
 
+        batch_count = 0
+        total_batches = (len(nodes) // PROCESSING_BATCH_SIZE) + 1
         transformed = []
-        async for n in tqdm_iterable(nodes, "Transforming nodes..."):
-            transformed_node = await self._transform_node(n)
-            transformed.append(transformed_node)
+
+        async for batch in async_batch(nodes, batch_size=PROCESSING_BATCH_SIZE):
+            batch_count += 1
+            tasks = [asyncio.create_task(self._transform_node(n)) for n in batch]
+
+            async for task in tqdm_iterable(
+                asyncio.as_completed(tasks),
+                f"Batch {batch_count}/{total_batches}: Transforming nodes...",
+            ):
+                transformed_node = await task
+                transformed.append(transformed_node)
 
         return transformed
 
@@ -306,9 +316,12 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             existing_entities_dict = {}
 
         entities = []
+        batch_count = 0
+        total_batches = (len(all_entities) // PROCESSING_BATCH_SIZE) + 1
         async for batch in async_batch(
-            all_entities.items(), batch_size=PROCESSING_BATCH_SIZE
+            list(all_entities.items()), batch_size=PROCESSING_BATCH_SIZE
         ):
+            batch_count += 1
             tasks = [
                 asyncio.create_task(
                     _transform(key, entities, existing_entities_dict.get(key))
@@ -317,7 +330,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             ]
 
             async for task in tqdm_iterable(
-                asyncio.as_completed(tasks), "Transforming entities..."
+                asyncio.as_completed(tasks),
+                f"Batch {batch_count}/{total_batches}: Transforming entities...",
             ):
                 transformed = await task
                 entities.append(transformed)
@@ -432,9 +446,13 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             existing_relationships_dict = {}
 
         relations = []
+        batch_count = 0
+        total_batches = (len(all_relationships) // PROCESSING_BATCH_SIZE) + 1
+
         async for batch in async_batch(
-            all_relationships.items(), batch_size=PROCESSING_BATCH_SIZE
+            list(all_relationships.items()), batch_size=PROCESSING_BATCH_SIZE
         ):
+            batch_count += 1
             tasks = [
                 asyncio.create_task(
                     _transform(key, relationships, existing_relationships_dict.get(key))
@@ -443,7 +461,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             ]
 
             async for task in tqdm_iterable(
-                asyncio.as_completed(tasks), "Transforming relations..."
+                asyncio.as_completed(tasks),
+                f"Batch {batch_count}/{total_batches}: Transforming relations...",
             ):
                 transformed = await task
                 relations.append(transformed)
