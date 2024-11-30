@@ -27,7 +27,9 @@ class LLMPipelineComponent(BaseModel, ABC):
         return self._llm_fn
 
     @token_limited_task(
-        "o200k_base", max_tokens=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000)
+        "o200k_base",
+        max_tokens_per_minute=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000),
+        max_requests_per_minute=os.getenv("FARGS_LLM_RATE_LIMIT", 1_000),
     )
     async def invoke_llm(self, **kwargs):
         try:

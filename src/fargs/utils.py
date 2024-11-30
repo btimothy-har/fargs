@@ -22,11 +22,12 @@ def rate_limited_task(max_rate: int = 10, interval: int = 1):
 
 def token_limited_task(
     encoder_model: str = "cl100k_base",
-    max_tokens: int = 100_000,
-    interval: int = 60,
+    max_tokens_per_minute: int = 100_000,
+    max_requests_per_minute: int = 1_000,
 ):
     tokenizer = tiktoken.get_encoding(encoder_model)
-    task_limiter = AsyncLimiter(int(max_tokens), int(interval))
+    task_limiter = AsyncLimiter(int(max_tokens_per_minute), 60)
+    rate_limiter = AsyncLimiter(int(int(max_requests_per_minute) // 60), 60)
 
     def decorator(func):
         @wraps(func)
@@ -38,8 +39,9 @@ def token_limited_task(
                 total_tokens += len(tokenizer.encode(str(key)))
                 total_tokens += len(tokenizer.encode(str(value)))
 
-            await task_limiter.acquire(total_tokens)
-            return await func(self, *args, **kwargs)
+            async with rate_limiter:
+                await task_limiter.acquire(total_tokens)
+                return await func(self, *args, **kwargs)
 
         return wrapper
 

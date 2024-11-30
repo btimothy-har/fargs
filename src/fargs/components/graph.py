@@ -18,6 +18,7 @@ from pydantic import PrivateAttr
 from retry_async import retry
 
 from fargs.config import EMBEDDING_CONTEXT_LENGTH
+from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import SUMMARY_CONTEXT_WINDOW
 from fargs.config import default_extraction_llm
 from fargs.config import default_retry_config
@@ -26,6 +27,7 @@ from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
 from fargs.prompts import SUMMARIZE_NODE_PROMPT
+from fargs.utils import async_batch
 from fargs.utils import token_limited_task
 from fargs.utils import tqdm_iterable
 
@@ -86,7 +88,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
     )
     @token_limited_task(
         encoder_model="cl100k_base",
-        max_tokens=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000),
+        max_tokens_per_minute=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000),
+        max_requests_per_minute=os.getenv("FARGS_LLM_RATE_LIMIT", 1_000),
     )
     async def _embed_node(self, node: Any):
         try:
@@ -303,18 +306,21 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             existing_entities_dict = {}
 
         entities = []
-        tasks = [
-            asyncio.create_task(
-                _transform(key, entities, existing_entities_dict.get(key))
-            )
-            for key, entities in all_entities.items()
-        ]
-
-        async for task in tqdm_iterable(
-            asyncio.as_completed(tasks), "Transforming entities..."
+        async for batch in async_batch(
+            all_entities.items(), batch_size=PROCESSING_BATCH_SIZE
         ):
-            transformed = await task
-            entities.append(transformed)
+            tasks = [
+                asyncio.create_task(
+                    _transform(key, entities, existing_entities_dict.get(key))
+                )
+                for key, entities in batch
+            ]
+
+            async for task in tqdm_iterable(
+                asyncio.as_completed(tasks), "Transforming entities..."
+            ):
+                transformed = await task
+                entities.append(transformed)
 
         await asyncio.to_thread(self._graph_store.upsert_nodes, entities)
 
@@ -426,18 +432,21 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             existing_relationships_dict = {}
 
         relations = []
-        tasks = [
-            asyncio.create_task(
-                _transform(key, relationships, existing_relationships_dict.get(key))
-            )
-            for key, relationships in all_relationships.items()
-        ]
-
-        async for task in tqdm_iterable(
-            asyncio.as_completed(tasks), "Transforming relations..."
+        async for batch in async_batch(
+            all_relationships.items(), batch_size=PROCESSING_BATCH_SIZE
         ):
-            transformed = await task
-            relations.append(transformed)
+            tasks = [
+                asyncio.create_task(
+                    _transform(key, relationships, existing_relationships_dict.get(key))
+                )
+                for key, relationships in batch
+            ]
+
+            async for task in tqdm_iterable(
+                asyncio.as_completed(tasks), "Transforming relations..."
+            ):
+                transformed = await task
+                relations.append(transformed)
 
         await asyncio.to_thread(self._graph_store.upsert_relations, relations)
 
