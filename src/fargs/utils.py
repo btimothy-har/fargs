@@ -27,7 +27,7 @@ def token_limited_task(
 ):
     tokenizer = tiktoken.get_encoding(encoder_model)
     task_limiter = AsyncLimiter(int(max_tokens_per_minute), 60)
-    rate_limiter = AsyncLimiter(int(int(max_requests_per_minute) // 60), 60)
+    rate_limiter = AsyncLimiter(int(int(max_requests_per_minute) // 60), 1)
 
     def decorator(func):
         @wraps(func)
