@@ -26,7 +26,9 @@ class LLMPipelineComponent(BaseModel, ABC):
             self._llm_fn = self._construct_function()
         return self._llm_fn
 
-    @token_limited_task(max_tokens=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000))
+    @token_limited_task(
+        "o200k_base", max_tokens=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000)
+    )
     async def invoke_llm(self, **kwargs):
         try:
             llm_result = await asyncio.to_thread(self.llm_fn, **kwargs)
