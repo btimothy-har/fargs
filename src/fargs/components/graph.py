@@ -85,6 +85,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             async for task in tqdm_iterable(
                 asyncio.as_completed(tasks),
                 f"Batch {batch_count}/{total_batches}: Transforming nodes...",
+                total=len(batch),
             ):
                 transformed_node = await task
                 transformed.append(transformed_node)
@@ -332,6 +333,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             async for task in tqdm_iterable(
                 asyncio.as_completed(tasks),
                 f"Batch {batch_count}/{total_batches}: Transforming entities...",
+                total=len(batch),
             ):
                 transformed = await task
                 entities.append(transformed)
@@ -463,6 +465,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             async for task in tqdm_iterable(
                 asyncio.as_completed(tasks),
                 f"Batch {batch_count}/{total_batches}: Transforming relations...",
+                total=len(batch),
             ):
                 transformed = await task
                 relations.append(transformed)
