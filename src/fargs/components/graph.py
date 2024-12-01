@@ -93,13 +93,16 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         transformed = []
         chunk_nodes = []
         rel_nodes = []
-        async for node in tqdm_iterable(
-            nodes,
+
+        tasks = [
+            asyncio.create_task(self._transform_node(node, entities_dict))
+            for node in nodes
+        ]
+        async for task in tqdm_iterable(
+            asyncio.as_completed(tasks),
             "Transforming nodes...",
         ):
-            t_node, t_chunk_nodes, t_rel_nodes = await self._transform_node(
-                node, entities_dict
-            )
+            t_node, t_chunk_nodes, t_rel_nodes = await task
             transformed.append(t_node)
 
             if t_chunk_nodes:
