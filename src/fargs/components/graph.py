@@ -22,7 +22,6 @@ from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
 from fargs.prompts import SUMMARIZE_NODE_PROMPT
-from fargs.utils import async_batch
 from fargs.utils import tqdm_iterable
 
 from .base import LLMPipelineComponent
@@ -77,7 +76,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         ]
         entities = (
             await asyncio.to_thread(
-                self._graph_store.get, ids=set([c.subject_key for c in all_claims])
+                self._graph_store.get,
+                ids=list({c.subject_key for c in all_claims}),
             )
             if all_claims
             else None
@@ -97,15 +97,17 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             if t_rel_nodes:
                 rel_nodes.extend(t_rel_nodes)
 
-        async for batch in async_batch(
-            chunk_nodes, batch_size=min(PROCESSING_BATCH_SIZE, 1000)
-        ):
-            await asyncio.to_thread(self._graph_store.upsert_nodes, batch)
+            if len(chunk_nodes) > min(PROCESSING_BATCH_SIZE, 1000):
+                await asyncio.to_thread(self._graph_store.upsert_nodes, chunk_nodes)
+                await asyncio.to_thread(self._graph_store.upsert_relations, rel_nodes)
+                chunk_nodes = []
+                rel_nodes = []
 
-        async for batch in async_batch(
-            rel_nodes, batch_size=min(PROCESSING_BATCH_SIZE, 1000)
-        ):
-            await asyncio.to_thread(self._graph_store.upsert_relations, batch)
+        if chunk_nodes:
+            await asyncio.to_thread(self._graph_store.upsert_nodes, chunk_nodes)
+
+        if rel_nodes:
+            await asyncio.to_thread(self._graph_store.upsert_relations, rel_nodes)
 
         return transformed
 
@@ -312,10 +314,12 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             )
             entities.append(e)
 
-        async for batch in async_batch(
-            entities, batch_size=min(PROCESSING_BATCH_SIZE, 1000)
-        ):
-            await asyncio.to_thread(self._graph_store.upsert_nodes, batch)
+            if len(entities) > min(PROCESSING_BATCH_SIZE, 1000):
+                await asyncio.to_thread(self._graph_store.upsert_nodes, entities)
+                entities = []
+
+        if entities:
+            await asyncio.to_thread(self._graph_store.upsert_nodes, entities)
 
     async def _transform_relations(self, nodes: list[BaseNode]):
         def _transform(
@@ -433,10 +437,12 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             )
             relations.append(r)
 
-        async for batch in async_batch(
-            relations, batch_size=min(PROCESSING_BATCH_SIZE, 1000)
-        ):
-            await asyncio.to_thread(self._graph_store.upsert_relations, batch)
+            if len(relations) > min(PROCESSING_BATCH_SIZE, 1000):
+                await asyncio.to_thread(self._graph_store.upsert_relations, relations)
+                relations = []
+
+        if relations:
+            await asyncio.to_thread(self._graph_store.upsert_relations, relations)
 
     def _construct_function(self):
         @ell.complex(**self.config)
