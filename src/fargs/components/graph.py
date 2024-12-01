@@ -141,8 +141,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 ids=[c.subject_key for c in claims]
             )
             subject_entities_dict = {e.id: e for e in subject_entities}
+
             object_entities: list[EntityNode] = self._graph_store.get(
-                self._graph_store.get,
                 ids=[c.object_key for c in claims if c.object_key],
             )
             object_entities_dict = {e.id: e for e in object_entities}
