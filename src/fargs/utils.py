@@ -27,8 +27,8 @@ def token_limited_task(
 ):
     tokenizer = tiktoken.get_encoding(encoder_model)
 
-    if max_tokens_per_minute >= 1_000_000:
-        seconds_per_million = (60 * 1_000_000) / max_tokens_per_minute
+    if int(max_tokens_per_minute) >= 1_000_000:
+        seconds_per_million = (60 * 1_000_000) / int(max_tokens_per_minute)
         token_limiter = AsyncLimiter(1_000_000, seconds_per_million)
     else:
         token_limiter = AsyncLimiter(int(max_tokens_per_minute), 60)
@@ -84,8 +84,9 @@ async def async_batch(items, batch_size: int):
     Yields:
         List of items in the current batch
     """
-    async for i in range(0, len(items), batch_size):
+    for i in range(0, len(items), batch_size):
         yield items[i : i + batch_size]
+        await asyncio.sleep(0)
 
 
 def sync_batch(items, batch_size: int):
