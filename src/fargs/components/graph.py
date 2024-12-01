@@ -69,17 +69,49 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         await self._transform_relations(nodes)
 
         transformed = []
+        chunk_nodes = []
+        rel_nodes = []
+
+        all_claims = [
+            claim for node in nodes for claim in node.metadata.get("claims", []) or []
+        ]
+        entities = (
+            await asyncio.to_thread(
+                self._graph_store.get, ids=set([c.subject_key for c in all_claims])
+            )
+            if all_claims
+            else None
+        )
+        entities_dict = {e.id: e for e in entities} if entities else {}
 
         async for node in tqdm_iterable(
             nodes,
             "Transforming nodes...",
         ):
-            t = await asyncio.to_thread(self._transform_node, node)
-            transformed.append(t)
+            t_node, t_chunk_nodes, t_rel_nodes = await asyncio.to_thread(
+                self._transform_node, node, entities_dict
+            )
+            transformed.append(t_node)
+            if t_chunk_nodes:
+                chunk_nodes.extend(t_chunk_nodes)
+            if t_rel_nodes:
+                rel_nodes.extend(t_rel_nodes)
+
+        async for batch in async_batch(
+            chunk_nodes, batch_size=min(PROCESSING_BATCH_SIZE, 1000)
+        ):
+            await asyncio.to_thread(self._graph_store.upsert_nodes, batch)
+
+        async for batch in async_batch(
+            rel_nodes, batch_size=min(PROCESSING_BATCH_SIZE, 1000)
+        ):
+            await asyncio.to_thread(self._graph_store.upsert_relations, batch)
 
         return transformed
 
-    def _transform_node(self, node: BaseNode, **kwargs) -> BaseNode:
+    def _transform_node(
+        self, node: BaseNode, entities_dict: dict[str, EntityNode] | None = None
+    ) -> BaseNode:
         def _transform_claim(
             parent_node: BaseNode,
             claim: DummyClaim,
@@ -117,7 +149,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 rel_subject = Relation(
                     label="subject_of",
                     source_id=chunk_node.id,
-                    target_id=subject_entity.id,
+                    target_id=claim.subject_key,
                 )
                 rel_nodes.append(rel_subject)
 
@@ -125,7 +157,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 rel_object = Relation(
                     label="object_of",
                     source_id=chunk_node.id,
-                    target_id=object_entity.id,
+                    target_id=claim.object_key,
                 )
                 rel_nodes.append(rel_object)
 
@@ -137,16 +169,6 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         claims = node.metadata.pop("claims", None)
 
         if claims:
-            subject_entities: list[EntityNode] = self._graph_store.get(
-                ids=[c.subject_key for c in claims]
-            )
-            subject_entities_dict = {e.id: e for e in subject_entities}
-
-            object_entities: list[EntityNode] = self._graph_store.get(
-                ids=[c.object_key for c in claims if c.object_key],
-            )
-            object_entities_dict = {e.id: e for e in object_entities}
-
             chunk_nodes = []
             rel_nodes = []
 
@@ -154,8 +176,10 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 chunk_node, rel_nodes = _transform_claim(
                     parent_node=node,
                     claim=c,
-                    subject_entity=subject_entities_dict.get(c.subject_key),
-                    object_entity=object_entities_dict.get(c.object_key),
+                    subject_entity=entities_dict.get(c.subject_key),
+                    object_entity=entities_dict.get(c.object_key)
+                    if c.object_key
+                    else None,
                 )
                 chunk_nodes.append(chunk_node)
                 rel_nodes.extend(rel_nodes)
@@ -167,7 +191,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
         node.excluded_embed_metadata_keys = self._excluded_embed_metadata_keys
         node.excluded_llm_metadata_keys = self._excluded_llm_metadata_keys
-        return node
+        return node, chunk_nodes, rel_nodes
 
     async def _transform_entities(self, nodes: list[BaseNode]):
         def _transform(
