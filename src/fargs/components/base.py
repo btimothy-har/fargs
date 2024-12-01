@@ -40,3 +40,13 @@ class LLMPipelineComponent(BaseModel, ABC):
         if len(llm_result.text) == 0:
             raise FargsNoResponseError("LLM returned an empty response")
         return llm_result
+
+    def _invoke_llm_sync(self, **kwargs):
+        try:
+            llm_result = self.llm_fn(**kwargs)
+        except Exception as e:
+            raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+
+        if len(llm_result.text) == 0:
+            raise FargsNoResponseError("LLM returned an empty response")
+        return llm_result
