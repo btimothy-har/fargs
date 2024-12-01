@@ -392,7 +392,9 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             self._graph_store.get_triplets, ids=list(all_relationships.keys())
         )
         if existing_relationships:
-            existing_relationships_dict = {r.id: r for r in existing_relationships}
+            existing_relationships_dict = {
+                r[1].id: r[1] for r in existing_relationships
+            }
         else:
             existing_relationships_dict = {}
 
