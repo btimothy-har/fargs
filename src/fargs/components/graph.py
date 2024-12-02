@@ -102,6 +102,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         async for task in tqdm_iterable(
             asyncio.as_completed(tasks),
             "Transforming nodes...",
+            total=len(tasks),
         ):
             t_node, t_chunk_nodes, t_rel_nodes = await task
             transformed.append(t_node)
@@ -154,9 +155,6 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 },
             )
 
-            if self._graph_store.supports_vector_queries:
-                chunk_node.properties["embedding"] = await self._embed_text(str(claim))
-
             rel_nodes = []
 
             if subject_entity:
@@ -186,21 +184,24 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
         if claims:
             tasks = [
-                asyncio.create_task(
-                    _transform_claim(
-                        parent_node=node,
-                        claim=c,
-                        subject_entity=entities_dict.get(c.subject_key),
-                        object_entity=entities_dict.get(c.object_key)
-                        if c.object_key
-                        else None,
-                    )
+                _transform_claim(
+                    parent_node=node,
+                    claim=c,
+                    subject_entity=entities_dict.get(c.subject_key),
+                    object_entity=entities_dict.get(c.object_key)
+                    if c.object_key
+                    else None,
                 )
                 for c in claims
             ]
 
             transformed_claims = await asyncio.gather(*tasks)
             for chunk_node, rel_nodes in transformed_claims:
+                if self._graph_store.supports_vector_queries:
+                    chunk_node.properties["embedding"] = await self._embed_text(
+                        f"{chunk_node.label}: {chunk_node.text}"
+                    )
+
                 chunk_nodes.append(chunk_node)
                 rel_nodes.extend(rel_nodes)
 
