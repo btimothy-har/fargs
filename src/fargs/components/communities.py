@@ -3,12 +3,15 @@ import json
 
 import ell
 import pydantic
+import tiktoken
 from llama_index.core.schema import BaseNode
 from llama_index.core.schema import TransformComponent
 from pydantic import Field
+from pydantic import PrivateAttr
 from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
+from fargs.config import SUMMARY_CONTEXT_WINDOW
 from fargs.config import default_retry_config
 from fargs.config import default_summarization_llm
 from fargs.exceptions import FargsExtractionError
@@ -25,6 +28,8 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
     prompt: str | None = Field(default=None)
     config: dict = Field(default_factory=dict)
 
+    _tokenizer: tiktoken.Encoding | None = PrivateAttr(default=None)
+
     def __init__(
         self,
         prompt: str = None,
@@ -40,8 +45,10 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
 
         if "gpt-4o" in self.config["model"]:
             self.config["response_format"] = CommunityReport
+            self._tokenizer = tiktoken.get_encoding("o200k_base")
         else:
             self.config["response_format"] = {"type": "json_object"}
+            self._tokenizer = tiktoken.get_encoding("cl100k_base")
 
     def _construct_function(self):
         @ell.complex(**self.config)
@@ -84,9 +91,17 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
         **default_retry_config,
     )
     async def summarize_community(self, node: BaseNode, **kwargs) -> BaseNode:
-        raw_text = node.text
+        text_encoded = await asyncio.to_thread(self._tokenizer.encode, node.text)
 
-        raw_result = await self.invoke_llm(community_text=raw_text)
+        desc = (
+            await asyncio.to_thread(
+                self._tokenizer.decode, text_encoded[:SUMMARY_CONTEXT_WINDOW]
+            )
+            if len(text_encoded) > SUMMARY_CONTEXT_WINDOW
+            else node.text
+        )
+
+        raw_result = await self.invoke_llm(community_text=desc)
 
         if "gpt-4o" in self.config["model"]:
             result = raw_result.parsed
