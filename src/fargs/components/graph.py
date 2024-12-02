@@ -199,10 +199,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 for c in claims
             ]
 
-            async for task in tqdm_iterable(
-                asyncio.as_completed(tasks), "Transforming claims...", disable=True
-            ):
-                chunk_node, rel_nodes = await task
+            transformed_claims = await asyncio.gather(*tasks)
+            for chunk_node, rel_nodes in transformed_claims:
                 chunk_nodes.append(chunk_node)
                 rel_nodes.extend(rel_nodes)
 
