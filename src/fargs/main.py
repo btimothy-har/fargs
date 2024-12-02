@@ -45,7 +45,7 @@ class Fargs:
         self,
         project_name: str,
         pre_split_strategy: NodeParser = default_splitter,
-        post_split_strategy: NodeParser = default_splitter,
+        post_split_strategy: NodeParser | None = None,
         embedding_strategy: BaseEmbedding = default_embeddings,
         graph_store: PropertyGraphStore = default_graph_store,
         extraction_config: dict = None,
@@ -133,35 +133,40 @@ class Fargs:
                         f"'{key}' should not be provided in extraction_config"
                     )
 
+            transformation_steps = [
+                self.pre_split_strategy,
+                self._components["entities"](
+                    prompt=self.prompts.entities if self.prompts else None,
+                    entity_types=self.entity_types,
+                    overwrite_config=self.extraction_llm_model,
+                ),
+                self._components["relationships"](
+                    prompt=self.prompts.relationships if self.prompts else None,
+                    overwrite_config=self.extraction_llm_model,
+                ),
+                self._components["claims"](
+                    prompt=self.prompts.claims if self.prompts else None,
+                    claim_types=self.claim_types,
+                    overwrite_config=self.extraction_llm_model,
+                ),
+                self._components["graph"](
+                    self.graph_store,
+                    self.embedding_strategy,
+                    excluded_embed_metadata_keys=self.excluded_embed_metadata_keys,
+                    excluded_llm_metadata_keys=self.excluded_llm_metadata_keys,
+                ),
+            ]
+
+            if self.post_split_strategy:
+                transformation_steps.append(self.post_split_strategy)
+
+            transformation_steps.append(self.embedding_strategy)
+
             self._extraction_pipeline = IngestionPipeline(
                 name=f"{self.project_name}_graph_extraction",
                 project_name=self.project_name,
                 vector_store=self.nodes_vector_store,
-                transformations=[
-                    self.pre_split_strategy,
-                    self._components["entities"](
-                        prompt=self.prompts.entities if self.prompts else None,
-                        entity_types=self.entity_types,
-                        overwrite_config=self.extraction_llm_model,
-                    ),
-                    self._components["relationships"](
-                        prompt=self.prompts.relationships if self.prompts else None,
-                        overwrite_config=self.extraction_llm_model,
-                    ),
-                    self._components["claims"](
-                        prompt=self.prompts.claims if self.prompts else None,
-                        claim_types=self.claim_types,
-                        overwrite_config=self.extraction_llm_model,
-                    ),
-                    self._components["graph"](
-                        self.graph_store,
-                        self.embedding_strategy,
-                        excluded_embed_metadata_keys=self.excluded_embed_metadata_keys,
-                        excluded_llm_metadata_keys=self.excluded_llm_metadata_keys,
-                    ),
-                    self.post_split_strategy,
-                    self.embedding_strategy,
-                ],
+                transformations=transformation_steps,
                 **self.extraction_config,
             )
         return self._extraction_pipeline

@@ -26,7 +26,13 @@ def token_limited_task(
     max_requests_per_minute: int = 1_000,
 ):
     tokenizer = tiktoken.get_encoding(encoder_model)
-    task_limiter = AsyncLimiter(int(max_tokens_per_minute), 60)
+
+    if int(max_tokens_per_minute) >= 1_000_000:
+        seconds_per_million = (60 * 1_000_000) / int(max_tokens_per_minute)
+        token_limiter = AsyncLimiter(1_000_000, seconds_per_million)
+    else:
+        token_limiter = AsyncLimiter(int(max_tokens_per_minute), 60)
+
     rate_limiter = AsyncLimiter(int(int(max_requests_per_minute) // 60), 1)
 
     def decorator(func):
@@ -40,7 +46,7 @@ def token_limited_task(
                 total_tokens += len(tokenizer.encode(str(value)))
 
             async with rate_limiter:
-                await task_limiter.acquire(total_tokens)
+                await token_limiter.acquire(total_tokens)
                 return await func(self, *args, **kwargs)
 
         return wrapper
@@ -78,5 +84,11 @@ async def async_batch(items, batch_size: int):
     Yields:
         List of items in the current batch
     """
+    for i in range(0, len(items), batch_size):
+        yield items[i : i + batch_size]
+        await asyncio.sleep(0)
+
+
+def sync_batch(items, batch_size: int):
     for i in range(0, len(items), batch_size):
         yield items[i : i + batch_size]
