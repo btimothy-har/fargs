@@ -15,7 +15,7 @@ from fargs.config import default_retry_config
 from fargs.exceptions import FargsExtractionError
 from fargs.models import Relationship
 from fargs.prompts import EXTRACT_RELATIONSHIPS_PROMPT
-from fargs.utils import async_batch
+from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
 
 from .base import LLMPipelineComponent
@@ -83,28 +83,24 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
         return extract_relationships
 
     async def aextract(self, nodes):
-        batch_count = 0
-        total_batches = (len(nodes) // PROCESSING_BATCH_SIZE) + 1
         relationships = []
+        tasks = [
+            asyncio.create_task(self.invoke_and_parse_results(node)) for node in nodes
+        ]
 
-        async for batch in async_batch(nodes, batch_size=PROCESSING_BATCH_SIZE):
-            batch_count += 1
-            tasks = [
-                asyncio.create_task(self.invoke_and_parse_results(node))
-                for node in batch
-            ]
-            async for task in tqdm_iterable(
-                tasks,
-                f"Batch {batch_count}/{total_batches}: Extracting relationships...",
-            ):
-                try:
-                    raw_results = await task
-                    relationships.append({"relationships": raw_results})
-                except Exception:
-                    relationships.append({"relationships": None})
+        async for task in tqdm_iterable(
+            tasks,
+            "Extracting relationships...",
+        ):
+            try:
+                raw_results = await task
+                relationships.append({"relationships": raw_results})
+            except Exception:
+                relationships.append({"relationships": None})
 
         return relationships
 
+    @sequential_task(concurrent_tasks=PROCESSING_BATCH_SIZE)
     @retry(
         (FargsExtractionError),
         is_async=True,

@@ -19,7 +19,7 @@ from fargs.exceptions import FargsExtractionError
 from fargs.models import DefaultEntityTypes
 from fargs.models import build_entity_model
 from fargs.prompts import EXTRACT_ENTITIES_PROMPT
-from fargs.utils import async_batch
+from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
 
 from .base import LLMPipelineComponent
@@ -88,28 +88,22 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
         return extract_entities
 
     async def aextract(self, nodes):
-        batch_count = 0
-        total_batches = (len(nodes) // PROCESSING_BATCH_SIZE) + 1
         entities = []
 
-        async for batch in async_batch(nodes, batch_size=PROCESSING_BATCH_SIZE):
-            batch_count += 1
-            tasks = [
-                asyncio.create_task(self.invoke_and_parse_results(node))
-                for node in batch
-            ]
-            async for task in tqdm_iterable(
-                tasks, f"Batch {batch_count}/{total_batches}: Extracting entities..."
-            ):
-                try:
-                    raw_results = await task
-                    entities.append({"entities": raw_results})
-                except Exception as e:
-                    print(f"Error: {e}")
-                    entities.append({"entities": None})
+        tasks = [
+            asyncio.create_task(self.invoke_and_parse_results(node)) for node in nodes
+        ]
+        async for task in tqdm_iterable(tasks, "Extracting entities..."):
+            try:
+                raw_results = await task
+                entities.append({"entities": raw_results})
+            except Exception as e:
+                print(f"Error: {e}")
+                entities.append({"entities": None})
 
         return entities
 
+    @sequential_task(concurrent_tasks=PROCESSING_BATCH_SIZE)
     @retry(
         (FargsExtractionError),
         is_async=True,

@@ -24,6 +24,7 @@ from fargs.models import DummyEntity
 from fargs.models import Relationship
 from fargs.prompts import SUMMARIZE_NODE_PROMPT
 from fargs.utils import async_batch
+from fargs.utils import sequential_task
 from fargs.utils import token_limited_task
 from fargs.utils import tqdm_iterable
 
@@ -126,6 +127,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
         return transformed
 
+    @sequential_task(concurrent_tasks=PROCESSING_BATCH_SIZE)
     async def _transform_node(
         self, node: BaseNode, entities_dict: dict[str, EntityNode] | None = None
     ) -> tuple[BaseNode, list[ChunkNode], list[Relation]]:
@@ -211,6 +213,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         node.excluded_llm_metadata_keys = self._excluded_llm_metadata_keys
         return node, chunk_nodes, rel_nodes
 
+    @sequential_task(concurrent_tasks=PROCESSING_BATCH_SIZE)
     async def _transform_entities(self, nodes: list[BaseNode]):
         async def _transform(
             key: str,
@@ -356,6 +359,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         ):
             await asyncio.to_thread(self._graph_store.upsert_nodes, batch)
 
+    @sequential_task(concurrent_tasks=PROCESSING_BATCH_SIZE)
     async def _transform_relations(self, nodes: list[BaseNode]):
         async def _transform(
             key: str,
