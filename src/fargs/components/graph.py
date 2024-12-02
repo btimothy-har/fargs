@@ -23,6 +23,7 @@ from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
 from fargs.prompts import SUMMARIZE_NODE_PROMPT
+from fargs.utils import async_batch
 from fargs.utils import token_limited_task
 from fargs.utils import tqdm_iterable
 
@@ -298,14 +299,14 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                 },
             )
 
-            if self._graph_store.supports_vector_queries:
-                node_text = (
-                    f"{entity_values['entity_type']}: {entity_values['name']} "
-                    f"{entity_values['description']}"
-                )
-                entity_node.properties["embedding"] = await self._embed_text(node_text)
-
             return entity_node
+
+        async def _embed(node: EntityNode) -> EntityNode:
+            node_text = (
+                f"{node.label}: {node.name} {node.properties.get('description', '')}"
+            )
+            node.properties["embedding"] = await self._embed_text(node_text)
+            return node
 
         all_entities = defaultdict(list)
         entities: list[DummyEntity] = [
@@ -338,12 +339,23 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             e = await task
             entities.append(e)
 
-            if len(entities) > min(PROCESSING_BATCH_SIZE, 1000):
-                await asyncio.to_thread(self._graph_store.upsert_nodes, entities)
-                entities = []
+        final_entities = []
+        if self._graph_store.supports_vector_queries:
+            tasks = [asyncio.create_task(_embed(e)) for e in entities]
 
-        if entities:
-            await asyncio.to_thread(self._graph_store.upsert_nodes, entities)
+            async for task in tqdm_iterable(
+                asyncio.as_completed(tasks),
+                "Embedding entities...",
+                total=len(tasks),
+            ):
+                final_entities.append(await task)
+        else:
+            final_entities = entities
+
+        async for batch in async_batch(
+            final_entities, min(PROCESSING_BATCH_SIZE, 1000)
+        ):
+            await asyncio.to_thread(self._graph_store.upsert_nodes, batch)
 
     async def _transform_relations(self, nodes: list[BaseNode]):
         async def _transform(
