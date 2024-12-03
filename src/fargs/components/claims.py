@@ -19,6 +19,7 @@ from fargs.exceptions import FargsExtractionError
 from fargs.models import DefaultClaimTypes
 from fargs.models import build_claim_model
 from fargs.prompts import EXTRACT_CLAIMS_PROMPT
+from fargs.utils import logger
 from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
 
@@ -112,7 +113,8 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
             try:
                 raw_results = await task
                 claims.append({"claims": raw_results})
-            except Exception:
+            except Exception as e:
+                logger.exception(f"Error extracting claims: {e}")
                 claims.append({"claims": None})
 
         return claims
@@ -151,10 +153,7 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
             try:
                 raw_claims = json.loads(raw_result.text_only)
             except json.JSONDecodeError as e:
-                raise FargsExtractionError(
-                    f"Failed to parse claims JSON from LLM output: {e}\n\n"
-                    f"{raw_result.text_only}"
-                ) from e
+                raise FargsExtractionError("Failed to parse claims JSON.") from e
             else:
                 try:
                     for r in raw_claims["claims"]:
@@ -163,11 +162,9 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
                                 claims.append(self._claim_model.model_validate(r))
                             except pydantic.ValidationError as e:
                                 raise FargsExtractionError(
-                                    f"Failed to validate entity: {e}\n\n{r}"
+                                    "Failed to validate claim."
                                 ) from e
                 except KeyError as e:
-                    raise FargsExtractionError(
-                        f"Failed to parse claims from LLM output: {raw_claims}"
-                    ) from e
+                    raise FargsExtractionError("Failed to parse claims.") from e
 
         return claims

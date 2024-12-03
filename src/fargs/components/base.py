@@ -45,8 +45,8 @@ class LLMPipelineComponent(BaseModel, ABC):
         try:
             llm_result = self.llm_fn(**kwargs)
         except Exception as e:
-            raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+            raise FargsLLMError() from e
 
         if len(llm_result.text) == 0:
-            raise FargsNoResponseError("LLM returned an empty response")
+            raise FargsNoResponseError()
         return llm_result

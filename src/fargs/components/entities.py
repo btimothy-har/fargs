@@ -19,6 +19,7 @@ from fargs.exceptions import FargsExtractionError
 from fargs.models import DefaultEntityTypes
 from fargs.models import build_entity_model
 from fargs.prompts import EXTRACT_ENTITIES_PROMPT
+from fargs.utils import logger
 from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
 
@@ -98,7 +99,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
                 raw_results = await task
                 entities.append({"entities": raw_results})
             except Exception as e:
-                print(f"Error: {e}")
+                logger.exception(f"Error extracting entities: {e}")
                 entities.append({"entities": None})
 
         return entities
@@ -123,10 +124,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
             try:
                 raw_entities = json.loads(raw_result.text_only)
             except json.JSONDecodeError as e:
-                raise FargsExtractionError(
-                    f"Failed to parse entities from LLM output: {e}\n\n"
-                    f"{raw_result.text_only}"
-                ) from e
+                raise FargsExtractionError("Failed to parse entities.") from e
             else:
                 try:
                     if raw_entities["no_entities"]:
@@ -137,12 +135,10 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
                                 entities.append(self._entity_model.model_validate(r))
                             except pydantic.ValidationError as e:
                                 raise FargsExtractionError(
-                                    f"Failed to validate entity: {e}\n\n{r}"
+                                    "Failed to validate entity."
                                 ) from e
                 except KeyError as e:
-                    raise FargsExtractionError(
-                        f"Failed to parse entities from LLM output: {raw_entities}"
-                    ) from e
+                    raise FargsExtractionError("Failed to parse entities.") from e
 
         for e in entities:
             e._origin = node.node_id

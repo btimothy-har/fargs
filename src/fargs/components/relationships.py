@@ -15,6 +15,7 @@ from fargs.config import default_retry_config
 from fargs.exceptions import FargsExtractionError
 from fargs.models import Relationship
 from fargs.prompts import EXTRACT_RELATIONSHIPS_PROMPT
+from fargs.utils import logger
 from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
 
@@ -95,7 +96,8 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
             try:
                 raw_results = await task
                 relationships.append({"relationships": raw_results})
-            except Exception:
+            except Exception as e:
+                logger.exception(f"Error extracting relationships: {e}")
                 relationships.append({"relationships": None})
 
         return relationships
@@ -134,19 +136,20 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
             try:
                 raw_relationships = json.loads(raw_result.text_only)
             except json.JSONDecodeError as e:
-                raise FargsExtractionError(
-                    f"Failed to parse relationships from LLM output: {e}\n\n"
-                    f"{raw_result.text_only}"
-                ) from e
+                raise FargsExtractionError("Failed to parse relationships.") from e
             else:
-                for r in raw_relationships["relationships"]:
-                    if isinstance(r, dict):
-                        try:
-                            relationships.append(Relationship.model_validate(r))
-                        except pydantic.ValidationError as e:
-                            raise FargsExtractionError(
-                                f"Failed to validate relationship: {e}\n\n{r}"
-                            ) from e
+                try:
+                    for r in raw_relationships["relationships"]:
+                        if isinstance(r, dict):
+                            try:
+                                relationships.append(Relationship.model_validate(r))
+                            except pydantic.ValidationError as e:
+                                raise FargsExtractionError(
+                                    "Failed to validate relationship."
+                                ) from e
+                except KeyError as e:
+                    raise FargsExtractionError("Failed to parse relationships.") from e
+
         for r in relationships:
             r._origin = node.node_id
         return relationships

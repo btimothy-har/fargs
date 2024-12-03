@@ -18,6 +18,7 @@ from fargs.exceptions import FargsExtractionError
 from fargs.exceptions import FargsLLMError
 from fargs.models import CommunityReport
 from fargs.prompts import COMMUNITY_REPORT
+from fargs.utils import logger
 from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
 
@@ -77,10 +78,11 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
         ):
             try:
                 result = await task
-                transformed.append(result)
             except Exception as e:
-                print(e)
+                logger.exception(f"Error summarizing community: {e}")
                 continue
+            else:
+                transformed.append(result)
 
         return transformed
 
@@ -111,8 +113,7 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
                 result = CommunityReport.model_validate(raw_report)
             except (json.JSONDecodeError, pydantic.ValidationError) as e:
                 raise FargsExtractionError(
-                    f"Failed to validate community report: {e}\n\n"
-                    f"{raw_result.text_only}"
+                    "Failed to validate community report."
                 ) from e
 
         node.text = result.description

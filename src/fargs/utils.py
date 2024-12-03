@@ -1,9 +1,19 @@
 import asyncio
+import logging
 from functools import wraps
 
 import tiktoken
 from aiolimiter import AsyncLimiter
 from tqdm.asyncio import tqdm_asyncio
+
+logger = logging.getLogger("fargs")
+logger.setLevel(logging.INFO)
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter("%(levelname)s [%(asctime)s] %(name)s: %(message)s")
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 def rate_limited_task(max_rate: int = 10, interval: int = 1):

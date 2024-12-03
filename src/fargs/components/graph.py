@@ -100,6 +100,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
             asyncio.create_task(self._transform_node(node, entities_dict))
             for node in nodes
         ]
+
         async for task in tqdm_iterable(
             asyncio.as_completed(tasks),
             "Transforming nodes...",
