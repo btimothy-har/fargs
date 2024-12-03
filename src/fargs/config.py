@@ -32,7 +32,7 @@ default_summarization_llm = {
 
 default_retry_config = {
     "tries": 3,
-    "delay": 0,
+    "delay": 1,
     "max_delay": 10,
     "backoff": 1.5,
     "jitter": 1,
