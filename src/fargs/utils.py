@@ -35,17 +35,17 @@ def token_limited_task(
     max_tokens_per_minute: int = 100_000,
     max_requests_per_minute: int = 1_000,
 ):
-    tokenizer = tiktoken.get_encoding(encoder_model)
-
-    if int(max_tokens_per_minute) >= 1_000_000:
-        seconds_per_million = (60 * 1_000_000) / int(max_tokens_per_minute)
-        token_limiter = AsyncLimiter(1_000_000, seconds_per_million)
-    else:
-        token_limiter = AsyncLimiter(int(max_tokens_per_minute), 60)
-
-    rate_limiter = AsyncLimiter(int(int(max_requests_per_minute) // 60), 1)
-
     def decorator(func):
+        tokenizer = tiktoken.get_encoding(encoder_model)
+
+        if int(max_tokens_per_minute) >= 1_000_000:
+            seconds_per_million = (60 * 1_000_000) / int(max_tokens_per_minute)
+            token_limiter = AsyncLimiter(1_000_000, seconds_per_million)
+        else:
+            token_limiter = AsyncLimiter(int(max_tokens_per_minute), 60)
+
+        rate_limiter = AsyncLimiter(int(int(max_requests_per_minute) // 60), 1)
+
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
             total_tokens = 0
@@ -65,9 +65,9 @@ def token_limited_task(
 
 
 def sequential_task(concurrent_tasks: int = 1):
-    sem = asyncio.Semaphore(concurrent_tasks)
-
     def decorator(func):
+        sem = asyncio.Semaphore(concurrent_tasks)
+
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
             async with sem:
