@@ -44,7 +44,11 @@ def token_limited_task(
         else:
             token_limiter = AsyncLimiter(int(max_tokens_per_minute), 60)
 
-        rate_limiter = AsyncLimiter(int(int(max_requests_per_minute) // 60), 1)
+        requests_per_second = int(max_requests_per_minute) / 60
+        if requests_per_second < 1:
+            rate_limiter = AsyncLimiter(1, int(60 / max_requests_per_minute))
+        else:
+            rate_limiter = AsyncLimiter(int(requests_per_second), 1)
 
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
