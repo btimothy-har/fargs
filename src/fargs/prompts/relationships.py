@@ -19,7 +19,4 @@ For each pair of related entities, extract the following information formatted i
 - relation_type: type of relationship between the source and target entities (e.g. "is_member_of", "belongs_to", "capital_of" etc.). Relation_types should be as specific as possible.
 - description: explanation of the relationship between the source and target entities
 - strength: a numeric float in 2 decimal places from 0.0 to 1.0 indicating the strength of the relationship
-
-Your response should ONLY contain JSON, following this schema:
-{output_schema}
 """

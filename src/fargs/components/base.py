@@ -1,30 +1,36 @@
-import asyncio
 import os
 from abc import ABC
-from abc import abstractmethod
-from collections.abc import Callable
 
 from pydantic import BaseModel
+from pydantic import Field
 from pydantic import PrivateAttr
+from pydantic_ai import Agent
 
-from fargs.exceptions import FargsLLMError
+from fargs.config import LLMConfiguration
 from fargs.exceptions import FargsNoResponseError
 from fargs.utils import token_limited_task
 
+default_llm_configuration = LLMConfiguration(model="gpt-4o-mini", temperature=0.0)
+
 
 class LLMPipelineComponent(BaseModel, ABC):
-    _llm_fn: Callable | None = PrivateAttr(default=None)
+    agent_config: LLMConfiguration = Field(default=default_llm_configuration)
+    system_prompt: str = Field(default="You are a helpful Assistant.")
+    output_model: BaseModel | None = Field(default=None)
+    _component_name: str = PrivateAttr(default="fargs.component")
 
     @property
-    @abstractmethod
-    def _construct_function(self):
-        return
+    def agent(self) -> Agent:
+        agent_params = {
+            "model": self.agent_config["model"],
+            "system_prompt": self.system_prompt,
+            "name": self._component_name,
+            "model_settings": {"temperature": self.agent_config["temperature"]},
+        }
+        if self.output_model:
+            agent_params["result_type"] = self.output_model
 
-    @property
-    def llm_fn(self) -> Callable:
-        if not self._llm_fn:
-            self._llm_fn = self._construct_function()
-        return self._llm_fn
+        return Agent(**agent_params)
 
     @token_limited_task(
         "o200k_base",
@@ -32,21 +38,9 @@ class LLMPipelineComponent(BaseModel, ABC):
         max_requests_per_minute=os.getenv("FARGS_LLM_RATE_LIMIT", 1_000),
     )
     async def invoke_llm(self, **kwargs):
-        try:
-            llm_result = await asyncio.to_thread(self.llm_fn, **kwargs)
-        except Exception as e:
-            raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+        llm_result = await self.agent.run(**kwargs)
 
-        if len(llm_result.text) == 0:
+        if len(llm_result.usage.response_tokens) == 0:
             raise FargsNoResponseError("LLM returned an empty response")
-        return llm_result
 
-    def _invoke_llm_sync(self, **kwargs):
-        try:
-            llm_result = self.llm_fn(**kwargs)
-        except Exception as e:
-            raise FargsLLMError() from e
-
-        if len(llm_result.text) == 0:
-            raise FargsNoResponseError()
-        return llm_result
+        return llm_result.data

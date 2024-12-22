@@ -19,7 +19,4 @@ The report should contain the following sections, formatted in the schema provid
 
 ### RULES ###
 - Do not include information where the supporting evidence for it is not provided.
-
-Your response should ONLY contain JSON, following this schema:
-{output_schema}
 """

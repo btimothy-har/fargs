@@ -26,7 +26,4 @@ For each claim, extract the following information:
 - description: Detailed description explaining the reasoning behind the claim, together with all the related evidence and references from the original text.
 - period: Period when the claim was made formatted as (start_date, end_date). If the claim was made on a single day, you may use the same date for both start_date and end_date.
 - sources: List of **all** quotes from the original text that are relevant to the claim.
-
-Your response should ONLY contain JSON, following this schema:
-{output_schema}
 """

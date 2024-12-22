@@ -28,7 +28,4 @@ For each identified entity, extract the following information:
 - attributes: List of attributes of the entity.
 
 If there are no entities to identify, use the schema flag "no_entities" to indicate that no entities were identified.
-
-Your response should ONLY contain JSON, following this schema:
-{output_schema}
 """

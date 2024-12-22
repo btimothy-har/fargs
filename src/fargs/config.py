@@ -6,6 +6,9 @@ from llama_index.core.vector_stores import SimpleVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.embeddings.openai import OpenAIEmbeddingMode
 from pydantic import BaseModel
+from pydantic_ai.models import KnownModelName
+from pydantic_ai.models import Model
+from typing_extensions import TypedDict
 
 EMBEDDING_CONTEXT_LENGTH = 6_000
 SUMMARY_CONTEXT_WINDOW = 100_000
@@ -20,23 +23,17 @@ class FargsPrompts(BaseModel):
     summarization: str = None
 
 
-default_extraction_llm = {
-    "model": "gpt-4o-mini",
-    "temperature": 0.0,
-}
+class LLMConfiguration(TypedDict):
+    model: str | Model | KnownModelName = "openai:gpt-4o-mini"
+    temperature: float = 0.0
 
-default_summarization_llm = {
-    "model": "gpt-4o-mini",
-    "temperature": 0.0,
-}
 
-default_retry_config = {
-    "tries": 3,
-    "delay": 1,
-    "max_delay": 10,
-    "backoff": 1.5,
-    "jitter": 1,
-}
+class RetryConfig(TypedDict):
+    tries: int = 3
+    delay: int = 1
+    max_delay: int = 10
+    backoff: float = 1.5
+    jitter: int = 1
 
 
 default_embeddings = OpenAIEmbedding(
