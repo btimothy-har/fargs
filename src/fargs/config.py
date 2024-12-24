@@ -6,8 +6,6 @@ from llama_index.core.vector_stores import SimpleVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.embeddings.openai import OpenAIEmbeddingMode
 from pydantic import BaseModel
-from pydantic_ai.models import KnownModelName
-from pydantic_ai.models import Model
 from typing_extensions import TypedDict
 
 EMBEDDING_CONTEXT_LENGTH = 6_000
@@ -24,7 +22,7 @@ class FargsPrompts(BaseModel):
 
 
 class LLMConfiguration(TypedDict):
-    model: str | Model | KnownModelName
+    model: str
     temperature: float
 
     @classmethod
