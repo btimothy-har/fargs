@@ -5,7 +5,7 @@ from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import LLMConfiguration
-from fargs.config import default_retry_config
+from fargs.config import RetryConfig
 from fargs.exceptions import FargsExtractionError
 from fargs.models import Relationship
 from fargs.prompts import EXTRACT_RELATIONSHIPS_PROMPT
@@ -67,7 +67,7 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
     @retry(
         (FargsExtractionError),  # TODO: use pydantic ai errors instead
         is_async=True,
-        **default_retry_config,
+        **RetryConfig.default(),
     )
     async def invoke_and_parse_results(self, node):
         if not node.metadata.get("entities"):

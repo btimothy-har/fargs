@@ -7,7 +7,7 @@ from llama_index.core.extractors import BaseExtractor
 from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
-from fargs.config import default_retry_config
+from fargs.config import RetryConfig
 from fargs.exceptions import FargsExtractionError
 from fargs.models import DefaultClaimTypes
 from fargs.models import build_claim_model
@@ -77,7 +77,7 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
     @retry(
         (FargsExtractionError),
         is_async=True,
-        **default_retry_config,
+        **RetryConfig.default(),
     )
     async def invoke_and_parse_results(self, node):
         if not node.metadata.get("entities"):

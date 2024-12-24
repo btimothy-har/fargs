@@ -24,16 +24,30 @@ class FargsPrompts(BaseModel):
 
 
 class LLMConfiguration(TypedDict):
-    model: str | Model | KnownModelName = "openai:gpt-4o-mini"
-    temperature: float = 0.0
+    model: str | Model | KnownModelName
+    temperature: float
+
+    @classmethod
+    def default(cls):
+        return cls(model="openai:gpt-4o-mini", temperature=0.0)
 
 
 class RetryConfig(TypedDict):
-    tries: int = 3
-    delay: int = 1
-    max_delay: int = 10
-    backoff: float = 1.5
-    jitter: int = 1
+    tries: int
+    delay: int
+    max_delay: int
+    backoff: float
+    jitter: int
+
+    @classmethod
+    def default(cls):
+        return cls(
+            tries=3,
+            delay=1,
+            max_delay=10,
+            backoff=1.5,
+            jitter=1,
+        )
 
 
 default_embeddings = OpenAIEmbedding(

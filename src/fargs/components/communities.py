@@ -8,7 +8,7 @@ from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import SUMMARY_CONTEXT_WINDOW
-from fargs.config import default_retry_config
+from fargs.config import RetryConfig
 from fargs.exceptions import FargsLLMError
 from fargs.models import CommunityReport
 from fargs.prompts import COMMUNITY_REPORT
@@ -78,7 +78,7 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
     @retry(
         (FargsLLMError),
         is_async=True,
-        **default_retry_config,
+        **RetryConfig.default(),
     )
     async def summarize_community(self, node: BaseNode, **kwargs) -> BaseNode:
         text_encoded = await asyncio.to_thread(self._tokenizer.encode, node.text)

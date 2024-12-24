@@ -28,8 +28,6 @@ from fargs.utils import sequential_task
 from fargs.utils import token_limited_task
 from fargs.utils import tqdm_iterable
 
-from .base import default_llm_configuration
-
 SUMMARIZE_NODE_MESSAGE = """
 TYPE: {type}
 TITLE: {title}
@@ -38,7 +36,7 @@ DESCRIPTION: {description}
 
 
 class GraphLoader(TransformComponent):
-    config: LLMConfiguration = Field(default=default_llm_configuration)
+    config: LLMConfiguration = Field(default=LLMConfiguration.default())
 
     _graph_store: PropertyGraphStore | None = PrivateAttr(default=None)
     _embeddings: BaseEmbedding | None = PrivateAttr(default=None)

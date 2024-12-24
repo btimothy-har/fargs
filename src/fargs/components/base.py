@@ -10,11 +10,9 @@ from fargs.config import LLMConfiguration
 from fargs.exceptions import FargsNoResponseError
 from fargs.utils import token_limited_task
 
-default_llm_configuration = LLMConfiguration(model="gpt-4o-mini", temperature=0.0)
-
 
 class LLMPipelineComponent(BaseModel, ABC):
-    agent_config: LLMConfiguration = Field(default=default_llm_configuration)
+    agent_config: LLMConfiguration = Field(default=LLMConfiguration.default())
     system_prompt: str = Field(default="You are a helpful Assistant.")
     output_model: BaseModel | None = Field(default=None)
     _component_name: str = PrivateAttr(default="fargs.component")

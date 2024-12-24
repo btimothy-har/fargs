@@ -8,7 +8,7 @@ from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import LLMConfiguration
-from fargs.config import default_retry_config
+from fargs.config import RetryConfig
 from fargs.exceptions import FargsExtractionError
 from fargs.models import DefaultEntityTypes
 from fargs.models import build_entity_model
@@ -65,7 +65,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
     @retry(
         (FargsExtractionError),  # TODO: use pydantic ai errors instead
         is_async=True,
-        **default_retry_config,
+        **RetryConfig.default(),
     )
     async def invoke_and_parse_results(self, node):
         entities = []
