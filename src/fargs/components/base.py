@@ -2,11 +2,14 @@ import os
 from abc import ABC
 from typing import Any
 
+import openai
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic_ai import Agent
+from retry_async import retry
 
 from fargs.config import LLMConfiguration
+from fargs.config import RetryConfig
 from fargs.exceptions import FargsNoResponseError
 from fargs.utils import token_limited_task
 
@@ -33,6 +36,17 @@ class LLMPipelineComponent(BaseModel, ABC):
 
         return Agent(**agent_params)
 
+    @retry(
+        (
+            openai.BadRequestError,
+            openai.RateLimitError,
+            openai.APIStatusError,
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+        ),
+        is_async=True,
+        **RetryConfig.default(),
+    )
     @token_limited_task(
         "o200k_base",
         max_tokens_per_minute=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000),

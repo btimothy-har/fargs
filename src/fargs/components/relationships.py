@@ -3,12 +3,9 @@ import asyncio
 from llama_index.core.extractors import BaseExtractor
 from pydantic import BaseModel
 from pydantic import Field
-from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import LLMConfiguration
-from fargs.config import RetryConfig
-from fargs.exceptions import FargsExtractionError
 from fargs.models import Relationship
 from fargs.prompts import EXTRACT_RELATIONSHIPS_PROMPT
 from fargs.utils import logger
@@ -76,11 +73,6 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
         return relationships
 
     @sequential_task(concurrent_tasks=PROCESSING_BATCH_SIZE)
-    @retry(
-        (FargsExtractionError),  # TODO: use pydantic ai errors instead
-        is_async=True,
-        **RetryConfig.default(),
-    )
     async def invoke_and_parse_results(self, node):
         if not node.metadata.get("entities"):
             return None

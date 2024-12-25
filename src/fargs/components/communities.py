@@ -4,12 +4,9 @@ import tiktoken
 from llama_index.core.schema import BaseNode
 from llama_index.core.schema import TransformComponent
 from pydantic import PrivateAttr
-from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import SUMMARY_CONTEXT_WINDOW
-from fargs.config import RetryConfig
-from fargs.exceptions import FargsLLMError
 from fargs.models import CommunityReport
 from fargs.prompts import COMMUNITY_REPORT
 from fargs.utils import logger
@@ -75,11 +72,6 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
         return transformed
 
     @sequential_task(concurrent_tasks=PROCESSING_BATCH_SIZE)
-    @retry(
-        (FargsLLMError),
-        is_async=True,
-        **RetryConfig.default(),
-    )
     async def summarize_community(self, node: BaseNode, **kwargs) -> BaseNode:
         text_encoded = await asyncio.to_thread(self._tokenizer.encode, node.text)
 

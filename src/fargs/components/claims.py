@@ -6,11 +6,8 @@ from enum import Enum
 from llama_index.core.extractors import BaseExtractor
 from pydantic import BaseModel
 from pydantic import Field
-from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
-from fargs.config import RetryConfig
-from fargs.exceptions import FargsExtractionError
 from fargs.models import DefaultClaimTypes
 from fargs.models import build_claim_model
 from fargs.prompts import EXTRACT_CLAIMS_PROMPT
@@ -92,11 +89,6 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
         return claims
 
     @sequential_task(concurrent_tasks=PROCESSING_BATCH_SIZE)
-    @retry(
-        (FargsExtractionError),
-        is_async=True,
-        **RetryConfig.default(),
-    )
     async def invoke_and_parse_results(self, node):
         if not node.metadata.get("entities"):
             return None

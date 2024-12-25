@@ -3,6 +3,7 @@ import os
 from collections import defaultdict
 from typing import Literal
 
+import openai
 import tiktoken
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.graph_stores import ChunkNode
@@ -14,11 +15,13 @@ from llama_index.core.schema import TransformComponent
 from pydantic import Field
 from pydantic import PrivateAttr
 from pydantic_ai import Agent
+from retry_async import retry
 
 from fargs.config import EMBEDDING_CONTEXT_LENGTH
 from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import SUMMARY_CONTEXT_WINDOW
 from fargs.config import LLMConfiguration
+from fargs.config import RetryConfig
 from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
@@ -63,6 +66,13 @@ class GraphLoader(TransformComponent):
         if config:
             self.config = config
 
+        self.agent = Agent(
+            model=self.config["model"],
+            system_prompt=SUMMARIZE_NODE_PROMPT,
+            name="fargs.node.summarizer",
+            model_settings={"temperature": self.config["temperature"]},
+        )
+
     def __call__(self, nodes: list[BaseNode], **kwargs) -> list[BaseNode]:
         asyncio.run(self.acall(nodes, **kwargs))
 
@@ -74,6 +84,17 @@ class GraphLoader(TransformComponent):
     async def _embed_text(self, text: str):
         return await self._embeddings.aget_text_embedding(text)
 
+    @retry(
+        (
+            openai.BadRequestError,
+            openai.RateLimitError,
+            openai.APIStatusError,
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+        ),
+        is_async=True,
+        **RetryConfig.default(),
+    )
     @token_limited_task(
         "cl100k_base",
         max_tokens_per_minute=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000),
@@ -82,14 +103,7 @@ class GraphLoader(TransformComponent):
     async def _summarize_node(
         self, node_type: Literal["entity", "relation"], title: str, description: str
     ):
-        agent = Agent(
-            model=self.config["model"],
-            system_prompt=SUMMARIZE_NODE_PROMPT,
-            name="fargs.node.summarizer",
-            model_settings={"temperature": self.config["temperature"]},
-        )
-
-        return await agent.run(
+        return await self.agent.run(
             SUMMARIZE_NODE_MESSAGE.format(
                 node_type=node_type,
                 title=title,

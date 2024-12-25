@@ -6,12 +6,9 @@ from enum import Enum
 from llama_index.core.extractors import BaseExtractor
 from pydantic import BaseModel
 from pydantic import Field
-from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import LLMConfiguration
-from fargs.config import RetryConfig
-from fargs.exceptions import FargsExtractionError
 from fargs.models import DefaultEntityTypes
 from fargs.models import build_entity_model
 from fargs.prompts import EXTRACT_ENTITIES_PROMPT
@@ -79,11 +76,6 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
         return entities
 
     @sequential_task(concurrent_tasks=PROCESSING_BATCH_SIZE)
-    @retry(
-        (FargsExtractionError),  # TODO: use pydantic ai errors instead
-        is_async=True,
-        **RetryConfig.default(),
-    )
     async def invoke_and_parse_results(self, node):
         entities = []
 
