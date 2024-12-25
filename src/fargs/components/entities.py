@@ -30,7 +30,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
     ):
         system_prompt = prompt or EXTRACT_ENTITIES_PROMPT.format(
             current_date=datetime.now(UTC).strftime("%Y-%m-%d"),
-            entity_types=[t.value for t in self._entity_types],
+            entity_types=[t.value for t in entity_types],
         )
 
         component_args = {

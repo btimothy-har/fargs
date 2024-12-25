@@ -39,8 +39,7 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
     ):
         system_prompt = prompt or EXTRACT_CLAIMS_PROMPT.format(
             current_date=datetime.now(UTC).strftime("%Y-%m-%d"),
-            claim_types=[t.value for t in self._claim_types],
-            output_schema=self._output_model.model_json_schema(),
+            claim_types=[t.value for t in claim_types],
         )
 
         component_args = {
