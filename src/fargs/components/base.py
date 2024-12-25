@@ -1,5 +1,6 @@
 import os
 from abc import ABC
+from typing import Any
 
 from pydantic import BaseModel
 from pydantic import Field
@@ -14,7 +15,7 @@ from fargs.utils import token_limited_task
 class LLMPipelineComponent(BaseModel, ABC):
     agent_config: LLMConfiguration = Field(default=LLMConfiguration.default())
     system_prompt: str = Field(default="You are a helpful Assistant.")
-    output_model: BaseModel | None = Field(default=None)
+    output_model: Any = Field(default=None)
     _component_name: str = PrivateAttr(default="fargs.component")
 
     @property
