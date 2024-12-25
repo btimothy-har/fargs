@@ -66,13 +66,6 @@ class GraphLoader(TransformComponent):
         if config:
             self.config = config
 
-        self.agent = Agent(
-            model=self.config["model"],
-            system_prompt=SUMMARIZE_NODE_PROMPT,
-            name="fargs.node.summarizer",
-            model_settings={"temperature": self.config["temperature"]},
-        )
-
     def __call__(self, nodes: list[BaseNode], **kwargs) -> list[BaseNode]:
         asyncio.run(self.acall(nodes, **kwargs))
 
@@ -103,7 +96,14 @@ class GraphLoader(TransformComponent):
     async def _summarize_node(
         self, node_type: Literal["entity", "relation"], title: str, description: str
     ):
-        return await self.agent.run(
+        agent = Agent(
+            model=self.config["model"],
+            system_prompt=SUMMARIZE_NODE_PROMPT,
+            name="fargs.node.summarizer",
+            model_settings={"temperature": self.config["temperature"]},
+        )
+
+        return await agent.run(
             SUMMARIZE_NODE_MESSAGE.format(
                 node_type=node_type,
                 title=title,
