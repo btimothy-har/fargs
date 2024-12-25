@@ -42,7 +42,7 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
 
         self._tokenizer = (
             tiktoken.get_encoding("o200k_base")
-            if "gpt-4o" in self.config["model"]
+            if "gpt-4o" in self.agent_config["model"]
             else tiktoken.get_encoding("cl100k_base")
         )
 
