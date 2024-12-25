@@ -17,6 +17,9 @@ class LLMPipelineComponent(BaseModel, ABC):
     output_model: Any = Field(default=None)
     component_name: str = Field(default="fargs.component")
 
+    class Config:
+        arbitrary_types_allowed = True
+
     @property
     def agent(self) -> Agent:
         agent_params = {
