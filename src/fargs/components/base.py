@@ -37,7 +37,7 @@ class LLMPipelineComponent(BaseModel, ABC):
         return Agent(**agent_params)
 
     @retry(
-        (
+        exceptions=(
             openai.BadRequestError,
             openai.RateLimitError,
             openai.APIStatusError,

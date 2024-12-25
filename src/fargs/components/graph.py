@@ -85,7 +85,7 @@ class GraphLoader(TransformComponent):
         return await self._embeddings.aget_text_embedding(text)
 
     @retry(
-        (
+        exceptions=(
             openai.BadRequestError,
             openai.RateLimitError,
             openai.APIStatusError,
