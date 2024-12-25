@@ -48,12 +48,14 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
             entity_types=[t.value for t in entity_types],
         )
 
+        output_model_class = build_output_model(
+            build_entity_model(entity_types or DefaultEntityTypes)
+        )
+
         component_args = {
             "_component_name": "fargs.entities.extractor",
             "system_prompt": system_prompt,
-            "output_model": build_output_model(
-                build_entity_model(entity_types or DefaultEntityTypes)
-            ),
+            "output_model": output_model_class,
         }
         if overwrite_config:
             component_args["agent_config"] = overwrite_config
