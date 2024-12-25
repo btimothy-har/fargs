@@ -4,6 +4,8 @@ from datetime import datetime
 from enum import Enum
 
 from llama_index.core.extractors import BaseExtractor
+from pydantic import BaseModel
+from pydantic import Field
 from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
@@ -18,6 +20,19 @@ from fargs.utils import sequential_task
 from fargs.utils import tqdm_iterable
 
 from .base import LLMPipelineComponent
+
+
+def build_output_model(base_model: BaseModel) -> BaseModel:
+    class EntityOutput(BaseModel):
+        entities: list[base_model] = Field(
+            title="Entities", description="List of entities identified."
+        )
+        no_entities: bool = Field(
+            title="No Entities Flag",
+            description="If there are no entities to identify, set this to True.",
+        )
+
+    return EntityOutput
 
 
 class EntityExtractor(BaseExtractor, LLMPipelineComponent):
@@ -36,9 +51,9 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
         component_args = {
             "_component_name": "fargs.entities.extractor",
             "system_prompt": system_prompt,
-            "output_model": list[
+            "output_model": build_output_model(
                 build_entity_model(entity_types or DefaultEntityTypes)
-            ],
+            ),
         }
         if overwrite_config:
             component_args["agent_config"] = overwrite_config
@@ -70,8 +85,13 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
     async def invoke_and_parse_results(self, node):
         entities = []
 
-        entities = await self.invoke_llm(user_prompt=node.text)
+        extract_output = await self.invoke_llm(user_prompt=node.text)
 
-        for e in entities:
+        if extract_output.no_entities:
+            return []
+
+        for e in extract_output.entities:
             e._origin = node.node_id
+            entities.append(e)
+
         return entities

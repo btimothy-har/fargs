@@ -1,6 +1,8 @@
 import asyncio
 
 from llama_index.core.extractors import BaseExtractor
+from pydantic import BaseModel
+from pydantic import Field
 from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
@@ -26,6 +28,16 @@ RELATIONSHIP_EXTRACTION_MESSAGE = """
 """
 
 
+class RelationshipOutput(BaseModel):
+    relationships: list[Relationship] = Field(
+        title="Relationships", description="List of relationships identified."
+    )
+    no_relationships: bool = Field(
+        title="No Relationships Flag",
+        description="If there are no relationships to identify, set this to True.",
+    )
+
+
 class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
     def __init__(
         self,
@@ -36,7 +48,7 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
         component_args = {
             "_component_name": "fargs.relationships.extractor",
             "system_prompt": prompt or EXTRACT_RELATIONSHIPS_PROMPT,
-            "output_model": list[Relationship],
+            "output_model": RelationshipOutput,
         }
 
         if overwrite_config:
@@ -79,13 +91,18 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
             for m in node.metadata["entities"]
         ])
 
-        relationships = await self.invoke_llm(
+        extract_output = await self.invoke_llm(
             user_prompt=RELATIONSHIP_EXTRACTION_MESSAGE.format(
                 entities_text=entities_text,
                 text_unit=node.text,
             )
         )
 
-        for r in relationships:
+        if extract_output.no_relationships:
+            return []
+
+        for r in extract_output.relationships:
             r._origin = node.node_id
+            relationships.append(r)
+
         return relationships

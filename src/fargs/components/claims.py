@@ -4,6 +4,8 @@ from datetime import datetime
 from enum import Enum
 
 from llama_index.core.extractors import BaseExtractor
+from pydantic import BaseModel
+from pydantic import Field
 from retry_async import retry
 
 from fargs.config import PROCESSING_BATCH_SIZE
@@ -29,6 +31,19 @@ CLAIM_EXTRACTION_MESSAGE = """
 """
 
 
+def build_output_model(base_model: BaseModel) -> BaseModel:
+    class ClaimOutput(BaseModel):
+        claims: list[base_model] = Field(
+            title="Claims", description="List of claims identified."
+        )
+        no_claims: bool = Field(
+            title="No Claims Flag",
+            description="If there are no claims to identify, set this to True.",
+        )
+
+    return ClaimOutput
+
+
 class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
     def __init__(
         self,
@@ -45,7 +60,9 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
         component_args = {
             "_component_name": "fargs.claims.extractor",
             "system_prompt": system_prompt,
-            "output_model": list[build_claim_model(claim_types or DefaultClaimTypes)],
+            "output_model": build_output_model(
+                build_claim_model(claim_types or DefaultClaimTypes)
+            ),
         }
 
         if overwrite_config:
@@ -82,17 +99,19 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
         if not node.metadata.get("entities"):
             return None
 
-        claims = []
         entities_text = "\n\n".join([
             f"NAME: {m.name}, TYPE: {m.entity_type}, DESCRIPTION: {m.description}"
             for m in node.metadata["entities"]
         ])
 
-        claims = await self.invoke_llm(
+        extract_output = await self.invoke_llm(
             user_prompt=CLAIM_EXTRACTION_MESSAGE.format(
                 entities_text=entities_text,
                 text_unit=node.text,
             )
         )
 
-        return claims
+        if extract_output.no_claims:
+            return []
+
+        return extract_output.claims
