@@ -14,7 +14,7 @@ from fargs.utils import token_limited_task
 class LLMPipelineComponent(BaseModel, ABC):
     agent_config: LLMConfiguration = Field(default=LLMConfiguration.default())
     system_prompt: str = Field(default="You are a helpful Assistant.")
-    output_model: BaseModel | None = Field(default=None)
+    output_model: BaseModel | list[BaseModel] | None = Field(default=None)
     _component_name: str = PrivateAttr(default="fargs.component")
 
     @property
