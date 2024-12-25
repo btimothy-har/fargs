@@ -30,11 +30,11 @@ RELATIONSHIP_EXTRACTION_MESSAGE = """
 
 class RelationshipOutput(BaseModel):
     relationships: list[Relationship] = Field(
-        title="Relationships", description="List of relationships identified."
-    )
-    no_relationships: bool = Field(
-        title="No Relationships Flag",
-        description="If there are no relationships to identify, set this to True.",
+        title="Relationships",
+        description=(
+            "List of relationships identified. If there are no relationships, you may"
+            " respond with an empty list."
+        ),
     )
 
 
@@ -98,7 +98,7 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
             )
         )
 
-        if extract_output.no_relationships:
+        if not extract_output.relationships:
             return []
 
         for r in extract_output.relationships:

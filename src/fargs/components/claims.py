@@ -34,11 +34,11 @@ CLAIM_EXTRACTION_MESSAGE = """
 def build_output_model(base_model: BaseModel) -> BaseModel:
     class ClaimOutput(BaseModel):
         claims: list[base_model] = Field(
-            title="Claims", description="List of claims identified."
-        )
-        no_claims: bool = Field(
-            title="No Claims Flag",
-            description="If there are no claims to identify, set this to True.",
+            title="Claims",
+            description=(
+                "List of claims identified. If there are no claims, you may respond"
+                " with an empty list."
+            ),
         )
 
     return ClaimOutput
@@ -113,7 +113,7 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
             )
         )
 
-        if extract_output.no_claims:
+        if not extract_output.claims:
             return []
 
         return extract_output.claims

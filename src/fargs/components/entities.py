@@ -25,11 +25,11 @@ from .base import LLMPipelineComponent
 def build_output_model(base_model: BaseModel) -> BaseModel:
     class EntityOutput(BaseModel):
         entities: list[base_model] = Field(
-            title="Entities", description="List of entities identified."
-        )
-        no_entities: bool = Field(
-            title="No Entities Flag",
-            description="If there are no entities to identify, set this to True.",
+            title="Entities",
+            description=(
+                "List of entities identified. If there are no entities, you may respond"
+                " with an empty list."
+            ),
         )
 
     return EntityOutput
@@ -89,7 +89,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
 
         extract_output = await self.invoke_llm(user_prompt=node.text)
 
-        if extract_output.no_entities:
+        if not extract_output.entities:
             return []
 
         for e in extract_output.entities:
