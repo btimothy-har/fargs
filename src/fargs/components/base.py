@@ -40,7 +40,7 @@ class LLMPipelineComponent(BaseModel, ABC):
 
         usage = llm_result.usage()
 
-        if len(usage.response_tokens) == 0:
+        if usage.response_tokens == 0:
             raise FargsNoResponseError("LLM returned an empty response")
 
         return llm_result.data
