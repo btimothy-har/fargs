@@ -39,7 +39,9 @@ class LLMPipelineComponent(BaseModel, ABC):
     async def invoke_llm(self, **kwargs):
         llm_result = await self.agent.run(**kwargs)
 
-        if len(llm_result.usage.response_tokens) == 0:
+        usage = llm_result.usage()
+
+        if len(usage.response_tokens) == 0:
             raise FargsNoResponseError("LLM returned an empty response")
 
         return llm_result.data
