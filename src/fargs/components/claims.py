@@ -57,12 +57,14 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
             claim_types=[t.value for t in claim_types],
         )
 
+        output_model_class = build_output_model(
+            build_claim_model(claim_types or DefaultClaimTypes)
+        )
+
         component_args = {
-            "_component_name": "fargs.claims.extractor",
+            "component_name": "fargs.claims.extractor",
             "system_prompt": system_prompt,
-            "output_model": build_output_model(
-                build_claim_model(claim_types or DefaultClaimTypes)
-            ),
+            "output_model": output_model_class,
         }
 
         if overwrite_config:

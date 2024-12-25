@@ -46,7 +46,7 @@ class RelationshipExtractor(BaseExtractor, LLMPipelineComponent):
         **kwargs,
     ):
         component_args = {
-            "_component_name": "fargs.relationships.extractor",
+            "component_name": "fargs.relationships.extractor",
             "system_prompt": prompt or EXTRACT_RELATIONSHIPS_PROMPT,
             "output_model": RelationshipOutput,
         }

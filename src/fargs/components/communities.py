@@ -33,7 +33,7 @@ class CommunitySummarizer(TransformComponent, LLMPipelineComponent):
         system_prompt = prompt or COMMUNITY_REPORT
 
         component_args = {
-            "_component_name": "fargs.communities.summarizer",
+            "component_name": "fargs.communities.summarizer",
             "system_prompt": system_prompt,
             "output_model": CommunityReport,
         }

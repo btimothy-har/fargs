@@ -53,7 +53,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
         )
 
         component_args = {
-            "_component_name": "fargs.entities.extractor",
+            "component_name": "fargs.entities.extractor",
             "system_prompt": system_prompt,
             "output_model": output_model_class,
         }

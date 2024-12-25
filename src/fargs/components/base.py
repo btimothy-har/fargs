@@ -4,7 +4,6 @@ from typing import Any
 
 from pydantic import BaseModel
 from pydantic import Field
-from pydantic import PrivateAttr
 from pydantic_ai import Agent
 
 from fargs.config import LLMConfiguration
@@ -16,14 +15,14 @@ class LLMPipelineComponent(BaseModel, ABC):
     agent_config: LLMConfiguration = Field(default=LLMConfiguration.default())
     system_prompt: str = Field(default="You are a helpful Assistant.")
     output_model: Any = Field(default=None)
-    _component_name: str = PrivateAttr(default="fargs.component")
+    component_name: str = Field(default="fargs.component")
 
     @property
     def agent(self) -> Agent:
         agent_params = {
             "model": self.agent_config["model"],
             "system_prompt": self.system_prompt,
-            "name": self._component_name,
+            "name": self.component_name,
             "model_settings": {"temperature": self.agent_config["temperature"]},
         }
         if self.output_model:
