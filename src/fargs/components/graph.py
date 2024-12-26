@@ -3,7 +3,7 @@ import os
 from collections import defaultdict
 from typing import Literal
 
-import ell
+import openai
 import tiktoken
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.graph_stores import ChunkNode
@@ -14,11 +14,14 @@ from llama_index.core.schema import BaseNode
 from llama_index.core.schema import TransformComponent
 from pydantic import Field
 from pydantic import PrivateAttr
+from pydantic_ai import Agent
+from retry_async import retry
 
 from fargs.config import EMBEDDING_CONTEXT_LENGTH
 from fargs.config import PROCESSING_BATCH_SIZE
 from fargs.config import SUMMARY_CONTEXT_WINDOW
-from fargs.config import default_extraction_llm
+from fargs.config import LLMConfiguration
+from fargs.config import RetryConfig
 from fargs.models import DummyClaim
 from fargs.models import DummyEntity
 from fargs.models import Relationship
@@ -28,8 +31,6 @@ from fargs.utils import sequential_task
 from fargs.utils import token_limited_task
 from fargs.utils import tqdm_iterable
 
-from .base import LLMPipelineComponent
-
 SUMMARIZE_NODE_MESSAGE = """
 TYPE: {type}
 TITLE: {title}
@@ -37,8 +38,8 @@ DESCRIPTION: {description}
 """
 
 
-class GraphLoader(TransformComponent, LLMPipelineComponent):
-    config: dict = Field(default_factory=dict)
+class GraphLoader(TransformComponent):
+    config: LLMConfiguration = Field(default=LLMConfiguration.default())
 
     _graph_store: PropertyGraphStore | None = PrivateAttr(default=None)
     _embeddings: BaseEmbedding | None = PrivateAttr(default=None)
@@ -50,7 +51,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         self,
         graph_store: PropertyGraphStore,
         embeddings: BaseEmbedding,
-        overwrite_config: dict | None = None,
+        config: LLMConfiguration | None = None,
         excluded_embed_metadata_keys: list[str] | None = None,
         excluded_llm_metadata_keys: list[str] | None = None,
         **kwargs,
@@ -62,7 +63,8 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
         self._excluded_embed_metadata_keys = excluded_embed_metadata_keys
         self._excluded_llm_metadata_keys = excluded_llm_metadata_keys
 
-        self.config = overwrite_config or default_extraction_llm
+        if config:
+            self.config = config
 
     def __call__(self, nodes: list[BaseNode], **kwargs) -> list[BaseNode]:
         asyncio.run(self.acall(nodes, **kwargs))
@@ -74,6 +76,40 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
     )
     async def _embed_text(self, text: str):
         return await self._embeddings.aget_text_embedding(text)
+
+    @retry(
+        exceptions=(
+            openai.BadRequestError,
+            openai.RateLimitError,
+            openai.APIStatusError,
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+        ),
+        is_async=True,
+        **RetryConfig.default(),
+    )
+    @token_limited_task(
+        "cl100k_base",
+        max_tokens_per_minute=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000),
+        max_requests_per_minute=os.getenv("FARGS_LLM_RATE_LIMIT", 1_000),
+    )
+    async def _summarize_node(
+        self, node_type: Literal["entity", "relation"], title: str, description: str
+    ):
+        agent = Agent(
+            model=self.config["model"],
+            system_prompt=SUMMARIZE_NODE_PROMPT,
+            name="fargs.node.summarizer",
+            model_settings={"temperature": self.config["temperature"]},
+        )
+
+        return await agent.run(
+            SUMMARIZE_NODE_MESSAGE.format(
+                node_type=node_type,
+                title=title,
+                description=description,
+            )
+        )
 
     async def acall(self, nodes: list[BaseNode], **kwargs) -> list[BaseNode]:
         await self._transform_entities(nodes)
@@ -279,7 +315,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                     else entity_values["description"]
                 )
                 try:
-                    summary = await self.invoke_llm(
+                    summary = await self._summarize_node(
                         node_type="entity",
                         title=entity_values["name"],
                         description=desc,
@@ -420,7 +456,7 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
                     else relation_values["description"]
                 )
                 try:
-                    summary = await self.invoke_llm(
+                    summary = await self._summarize_node(
                         node_type="relation",
                         title=(
                             f"{relation_values['source_entity']} -> "
@@ -491,21 +527,3 @@ class GraphLoader(TransformComponent, LLMPipelineComponent):
 
         if relations:
             await asyncio.to_thread(self._graph_store.upsert_relations, relations)
-
-    def _construct_function(self):
-        @ell.complex(**self.config)
-        def summarize_node(
-            node_type: Literal["entity", "relation"],
-            title: str,
-            description: str,
-        ):
-            return [
-                ell.system(SUMMARIZE_NODE_PROMPT),
-                ell.user(
-                    SUMMARIZE_NODE_MESSAGE.format(
-                        type=node_type, title=title, description=description
-                    )
-                ),
-            ]
-
-        return summarize_node

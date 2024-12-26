@@ -1,52 +1,63 @@
-import asyncio
 import os
 from abc import ABC
-from abc import abstractmethod
-from collections.abc import Callable
+from typing import Any
 
+import openai
 from pydantic import BaseModel
-from pydantic import PrivateAttr
+from pydantic import Field
+from pydantic_ai import Agent
+from retry_async import retry
 
-from fargs.exceptions import FargsLLMError
+from fargs.config import LLMConfiguration
+from fargs.config import RetryConfig
 from fargs.exceptions import FargsNoResponseError
 from fargs.utils import token_limited_task
 
 
 class LLMPipelineComponent(BaseModel, ABC):
-    _llm_fn: Callable | None = PrivateAttr(default=None)
+    agent_config: LLMConfiguration = Field(default=LLMConfiguration.default())
+    system_prompt: str = Field(default="You are a helpful Assistant.")
+    output_model: Any = Field(default=None)
+    component_name: str = Field(default="fargs.component")
+
+    class Config:
+        arbitrary_types_allowed = True
 
     @property
-    @abstractmethod
-    def _construct_function(self):
-        return
+    def agent(self) -> Agent:
+        agent_params = {
+            "model": self.agent_config["model"],
+            "system_prompt": self.system_prompt,
+            "name": self.component_name,
+            "model_settings": {"temperature": self.agent_config["temperature"]},
+        }
+        if self.output_model:
+            agent_params["result_type"] = self.output_model
 
-    @property
-    def llm_fn(self) -> Callable:
-        if not self._llm_fn:
-            self._llm_fn = self._construct_function()
-        return self._llm_fn
+        return Agent(**agent_params)
 
+    @retry(
+        exceptions=(
+            openai.BadRequestError,
+            openai.RateLimitError,
+            openai.APIStatusError,
+            openai.APIConnectionError,
+            openai.APITimeoutError,
+        ),
+        is_async=True,
+        **RetryConfig.default(),
+    )
     @token_limited_task(
         "o200k_base",
         max_tokens_per_minute=os.getenv("FARGS_LLM_TOKEN_LIMIT", 100_000),
         max_requests_per_minute=os.getenv("FARGS_LLM_RATE_LIMIT", 1_000),
     )
     async def invoke_llm(self, **kwargs):
-        try:
-            llm_result = await asyncio.to_thread(self.llm_fn, **kwargs)
-        except Exception as e:
-            raise FargsLLMError(f"Failed to invoke LLM: {e}") from e
+        llm_result = await self.agent.run(**kwargs)
 
-        if len(llm_result.text) == 0:
+        usage = llm_result.usage()
+
+        if usage.response_tokens == 0:
             raise FargsNoResponseError("LLM returned an empty response")
-        return llm_result
 
-    def _invoke_llm_sync(self, **kwargs):
-        try:
-            llm_result = self.llm_fn(**kwargs)
-        except Exception as e:
-            raise FargsLLMError() from e
-
-        if len(llm_result.text) == 0:
-            raise FargsNoResponseError()
-        return llm_result
+        return llm_result.data

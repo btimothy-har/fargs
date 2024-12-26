@@ -15,6 +15,7 @@ from llama_index.core.schema import NodeWithScore
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
 
 from fargs.config import FargsPrompts
+from fargs.config import LLMConfiguration
 from fargs.config import default_embeddings
 from fargs.config import default_graph_store
 from fargs.config import default_splitter
@@ -49,10 +50,10 @@ class Fargs:
         embedding_strategy: BaseEmbedding = default_embeddings,
         graph_store: PropertyGraphStore = default_graph_store,
         extraction_config: dict = None,
-        extraction_llm_model: dict = None,
+        extraction_llm_model: LLMConfiguration = None,
         nodes_vector_store: BasePydanticVectorStore = default_vector_store,
         summarization_config: dict = None,
-        summarization_llm_model: dict = None,
+        summarization_llm_model: LLMConfiguration = None,
         community_vector_store: BasePydanticVectorStore = default_vector_store,
         excluded_embed_metadata_keys: list[str] = None,
         excluded_llm_metadata_keys: list[str] = None,
