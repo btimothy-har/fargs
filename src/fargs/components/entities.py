@@ -24,9 +24,14 @@ def build_output_model(base_model: BaseModel) -> BaseModel:
         entities: list[base_model] = Field(
             title="Entities",
             description=(
-                "List of entities identified. If there are no entities, you may respond"
+                "List of entities identified. If there are no entities, respond"
                 " with an empty list."
             ),
+        )
+        no_entities: bool = Field(
+            default=False,
+            title="No Entities",
+            description="Set this flag to True if there are no entities in the text.",
         )
 
     return EntityOutput
@@ -81,7 +86,7 @@ class EntityExtractor(BaseExtractor, LLMPipelineComponent):
 
         extract_output = await self.invoke_llm(user_prompt=node.text)
 
-        if not extract_output.entities:
+        if extract_output.no_entities:
             return []
 
         for e in extract_output.entities:

@@ -37,6 +37,11 @@ def build_output_model(base_model: BaseModel) -> BaseModel:
                 " with an empty list."
             ),
         )
+        no_claims: bool = Field(
+            default=False,
+            title="No Claims",
+            description="Set this flag to True if there are no claims in the text.",
+        )
 
     return ClaimOutput
 
@@ -105,7 +110,7 @@ class ClaimsExtractor(BaseExtractor, LLMPipelineComponent):
             )
         )
 
-        if not extract_output.claims:
+        if extract_output.no_claims:
             return []
 
         return extract_output.claims
